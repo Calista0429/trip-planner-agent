@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4"
 
+    # Feature flag: route trip planning through the LangGraph pipeline
+    # (app/graph) instead of the legacy MultiAgentTripPlanner. Off by default so
+    # the rollout is opt-in; enable with USE_LANGGRAPH_PLANNER=1.
+    use_langgraph_planner: bool = False
+
     # 个性化行程规划模型配置
     # 开启后仅最终 TripPlan 生成使用该模型，工具搜索/天气/酒店 Agent 仍使用默认 LLM。
     use_personalized_planner: bool = False

@@ -1,14 +1,34 @@
 """旅行规划API路由"""
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 from ...models.schemas import (
     TripRequest,
     TripPlanResponse,
     ErrorResponse
 )
+from ...config import get_settings
 from ...agents.trip_planner_agent import get_trip_planner_agent
 
 router = APIRouter(prefix="/trip", tags=["旅行规划"])
+
+
+def _plan_with_legacy_agent(request: TripRequest):
+    """Run the legacy MultiAgentTripPlanner and return (plan, status, message)."""
+    agent = get_trip_planner_agent()
+    trip_plan = agent.plan_trip(request)
+    status = getattr(agent, "last_generation_status", "unknown")
+    message = getattr(agent, "last_generation_message", "") or "旅行计划生成完成"
+    return trip_plan, status, message
+
+
+def _plan_with_graph(request: TripRequest):
+    """Run the LangGraph pipeline and return (plan, status, message)."""
+    from ...graph.service import generate_trip_plan
+
+    result = generate_trip_plan(request)
+    return result.plan, result.status, result.message
 
 
 @router.post(
@@ -28,27 +48,27 @@ async def plan_trip(request: TripRequest):
         旅行计划响应
     """
     try:
+        settings = get_settings()
+        use_graph = settings.use_langgraph_planner
+        backend = "langgraph" if use_graph else "legacy-agent"
+
         print(f"\n{'='*60}")
-        print(f"📥 收到旅行规划请求:")
-        print(f"   城市: {request.city}")
-        print(f"   日期: {request.start_date} - {request.end_date}")
-        print(f"   天数: {request.travel_days}")
+        print(f"[trip] incoming plan request (backend={backend})")
+        print(f"   city: {request.city}")
+        print(f"   dates: {request.start_date} - {request.end_date}")
+        print(f"   days: {request.travel_days}")
         print(f"{'='*60}\n")
 
-        # 获取Agent实例
-        print("🔄 获取多智能体系统实例...")
-        agent = get_trip_planner_agent()
-
-        # 生成旅行计划
-        print("🚀 开始生成旅行计划...")
-        trip_plan = agent.plan_trip(request)
-        generation_status = getattr(agent, "last_generation_status", "unknown")
-        generation_message = getattr(agent, "last_generation_message", "") or "旅行计划生成完成"
+        # Both planners do blocking LLM work; run them off the event loop.
+        planner = _plan_with_graph if use_graph else _plan_with_legacy_agent
+        trip_plan, generation_status, generation_message = await asyncio.to_thread(
+            planner, request
+        )
 
         if generation_status == "fallback_success":
-            print(f"⚠️  {generation_message}, 准备返回fallback响应\n")
+            print(f"[trip] returning fallback response: {generation_message}\n")
         else:
-            print(f"✅ {generation_message}, 准备返回响应\n")
+            print(f"[trip] returning response: {generation_message}\n")
 
         return TripPlanResponse(
             success=True,
@@ -57,7 +77,7 @@ async def plan_trip(request: TripRequest):
         )
 
     except Exception as e:
-        print(f"❌ 生成旅行计划失败: {str(e)}")
+        print(f"[trip] failed to generate plan: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(

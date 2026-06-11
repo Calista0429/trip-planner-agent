@@ -181,14 +181,14 @@ def build_planner_graph(
     return graph.compile()
 
 
-def run_planner_graph(
-    request: TripRequest,
-    runtime: Optional[PlannerRuntime] = None,
-) -> TripPlan:
-    """Convenience entry point: build (or reuse) a runtime, run, return the plan."""
-    runtime = runtime or build_default_runtime()
-    compiled = build_planner_graph(runtime)
-    initial: TripPlanState = {
+# Two model tiers x max_attempts plus the fixed nodes stay well under the cap,
+# but keep headroom so a future wider fan-out does not trip the limit.
+GRAPH_RECURSION_LIMIT = 50
+
+
+def initial_state(request: TripRequest) -> TripPlanState:
+    """Build the initial state dict for a planning run."""
+    return {
         "request": request,
         "candidates": [],
         "failures": [],
@@ -196,7 +196,16 @@ def run_planner_graph(
         "use_fallback_llm": False,
         "status": "start",
     }
-    # Two model tiers x max_attempts plus the fixed nodes stay well under the cap,
-    # but keep headroom so a future wider fan-out does not trip the limit.
-    final_state = compiled.invoke(initial, config={"recursion_limit": 50})
+
+
+def run_planner_graph(
+    request: TripRequest,
+    runtime: Optional[PlannerRuntime] = None,
+) -> TripPlan:
+    """Convenience entry point: build (or reuse) a runtime, run, return the plan."""
+    runtime = runtime or build_default_runtime()
+    compiled = build_planner_graph(runtime)
+    final_state = compiled.invoke(
+        initial_state(request), config={"recursion_limit": GRAPH_RECURSION_LIMIT}
+    )
     return final_state["final_plan"]
