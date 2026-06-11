@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Optional, Protocol
 
 from ..agents.planner_query import build_planner_query
 from ..models.schemas import TripPlan, TripRequest
@@ -44,6 +44,27 @@ class PlannerRuntime:
     fallback_label: str = "default planner"
     # Whether the fallback LLM is actually a different model worth retrying with.
     has_distinct_fallback: bool = False
+
+    # Optional per-subtask collectors enabling graph-native parallel fan-out.
+    # Each returns a partial snapshot {"tool_snapshot": {...}, "status": {...}}.
+    # When all of these (plus empty_context) are present the graph splits context
+    # collection into three parallel nodes; otherwise it falls back to the single
+    # collect_context node.
+    collect_attractions: Optional[Callable[[TripRequest], dict[str, Any]]] = None
+    collect_weather: Optional[Callable[[TripRequest], dict[str, Any]]] = None
+    collect_hotels: Optional[Callable[[TripRequest], dict[str, Any]]] = None
+    empty_context: Optional[Callable[[TripRequest], dict[str, Any]]] = None
+
+    def supports_fanout(self) -> bool:
+        """True when the runtime can drive the parallel context fan-out."""
+        return all(
+            (
+                self.collect_attractions,
+                self.collect_weather,
+                self.collect_hotels,
+                self.empty_context,
+            )
+        )
 
 
 def default_parse_plan(
@@ -86,4 +107,8 @@ def build_default_runtime() -> PlannerRuntime:
             "personalized planner" if primary_llm is not fallback_llm else "default planner"
         ),
         has_distinct_fallback=primary_llm is not fallback_llm,
+        collect_attractions=builder._collect_attraction_snapshot,
+        collect_weather=builder._collect_weather_snapshot,
+        collect_hotels=builder._collect_hotel_snapshot,
+        empty_context=builder.empty_context,
     )

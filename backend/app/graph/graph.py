@@ -52,6 +52,39 @@ def build_planner_graph(
         context = runtime.collect_context(state["request"])
         return {"planner_context": context, "status": "context_ready"}
 
+    def _make_subcollector(name: str, collector):
+        """Wrap one sub-collector into a node that never raises (mirrors collect())."""
+
+        def node(state: TripPlanState) -> dict[str, Any]:
+            try:
+                result = collector(state["request"])
+                part = {"name": name, "ok": True, "result": result}
+            except Exception as error:  # noqa: BLE001 - one failed source must not abort
+                part = {"name": name, "ok": False, "error": str(error)}
+            return {"snapshot_parts": [part]}
+
+        return node
+
+    def merge_context(state: TripPlanState) -> dict[str, Any]:
+        """Fan-in: assemble the parallel snapshot parts into one planner_context."""
+        context = runtime.empty_context(state["request"])
+        snapshot = context["tool_snapshot"]
+        for part in state.get("snapshot_parts", []):
+            name = part["name"]
+            if part["ok"]:
+                result = part["result"] or {}
+                snapshot.update(result.get("tool_snapshot", {}))
+                snapshot["tool_status"][name] = result.get("status", {"ok": True})
+            else:
+                snapshot["tool_status"][name] = {"ok": False, "detail": part["error"]}
+        # Routes stay disabled here, exactly as the legacy collect() did.
+        snapshot["route_hints"] = []
+        snapshot["tool_status"]["routes"] = {
+            "ok": True,
+            "detail": "disabled; planner uses poi address/district/location",
+        }
+        return {"planner_context": context, "status": "context_ready"}
+
     def build_query(state: TripPlanState) -> dict[str, Any]:
         query = runtime.build_query(state["request"], state["planner_context"])
         return {"planner_query": query, "status": "query_ready"}
@@ -154,15 +187,28 @@ def build_planner_graph(
         return "fallback"
 
     graph = StateGraph(TripPlanState)
-    graph.add_node("collect_context", collect_context)
     graph.add_node("build_query", build_query)
     graph.add_node("generate", generate)
     graph.add_node("switch_fallback", switch_fallback)
     graph.add_node("rerank", rerank_node)
     graph.add_node("fallback", fallback_plan)
 
-    graph.add_edge(START, "collect_context")
-    graph.add_edge("collect_context", "build_query")
+    if runtime.supports_fanout():
+        # Parallel fan-out: three collectors run concurrently, then merge.
+        graph.add_node("collect_attractions", _make_subcollector("attractions", runtime.collect_attractions))
+        graph.add_node("collect_weather", _make_subcollector("weather", runtime.collect_weather))
+        graph.add_node("collect_hotels", _make_subcollector("hotels", runtime.collect_hotels))
+        graph.add_node("merge_context", merge_context)
+        for collector in ("collect_attractions", "collect_weather", "collect_hotels"):
+            graph.add_edge(START, collector)
+            graph.add_edge(collector, "merge_context")
+        graph.add_edge("merge_context", "build_query")
+    else:
+        # Single-node collection (legacy / injected fake runtimes).
+        graph.add_node("collect_context", collect_context)
+        graph.add_edge(START, "collect_context")
+        graph.add_edge("collect_context", "build_query")
+
     graph.add_edge("build_query", "generate")
     graph.add_conditional_edges(
         "generate",

@@ -61,6 +61,10 @@ def reset_planner_graph() -> None:
 # Stable phase keys (for the frontend) + display copy, per graph node.
 _PROGRESS_BY_NODE = {
     "collect_context": ("collecting_context", "Gathering attractions, weather and hotels"),
+    "collect_attractions": ("collecting_attractions", "Searching attractions, food and experiences"),
+    "collect_weather": ("collecting_weather", "Fetching the weather forecast"),
+    "collect_hotels": ("collecting_hotels", "Recommending hotels"),
+    "merge_context": ("collecting_context", "Merging tool results"),
     "build_query": ("building_query", "Assembling the planner input"),
     "switch_fallback": ("switching_model", "Personalized model failed; switching to the default model"),
     "rerank": ("reranking", "Scoring and ranking candidate plans"),

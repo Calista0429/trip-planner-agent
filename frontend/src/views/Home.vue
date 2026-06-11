@@ -441,7 +441,10 @@ watch([() => formData.party.adults, () => formData.party.children, () => formDat
 
 // Map a streamed planning phase to a monotonic progress value (never regresses).
 const PHASE_PROGRESS: Record<string, number> = {
-  collecting_context: 25,
+  collecting_attractions: 20,
+  collecting_weather: 22,
+  collecting_hotels: 24,
+  collecting_context: 30,
   building_query: 35,
   switching_model: 75,
   reranking: 90,

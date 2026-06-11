@@ -30,7 +30,10 @@ class TripPlanState(TypedDict, total=False):
     # --- input ---
     request: TripRequest
 
-    # --- produced by collect_context / build_query ---
+    # --- produced by the parallel collect fan-out (each node appends one part) ---
+    snapshot_parts: Annotated[list[dict[str, Any]], operator.add]
+
+    # --- produced by collect_context / merge_context / build_query ---
     planner_context: dict[str, Any]
     planner_query: str
 
