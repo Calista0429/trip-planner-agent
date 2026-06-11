@@ -1,9 +1,11 @@
 """旅行规划API路由"""
 
 import asyncio
+import json
 import os
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from ...models.schemas import (
     TripRequest,
     TripPlanResponse,
@@ -20,7 +22,7 @@ def _plan_with_legacy_agent(request: TripRequest):
     agent = get_trip_planner_agent()
     trip_plan = agent.plan_trip(request)
     status = getattr(agent, "last_generation_status", "unknown")
-    message = getattr(agent, "last_generation_message", "") or "旅行计划生成完成"
+    message = getattr(agent, "last_generation_message", "") or "Trip plan generation finished"
     return trip_plan, status, message
 
 
@@ -83,8 +85,39 @@ async def plan_trip(request: TripRequest):
         traceback.print_exc()
         raise HTTPException(
             status_code=500,
-            detail=f"生成旅行计划失败: {str(e)}"
+            detail=f"Failed to generate trip plan: {str(e)}"
         )
+
+
+def _sse(event: dict) -> str:
+    """Format one event as a Server-Sent Events frame."""
+    etype = event.get("type", "progress")
+    payload = json.dumps(event, ensure_ascii=False, default=str)
+    return f"event: {etype}\ndata: {payload}\n\n"
+
+
+@router.post(
+    "/plan/stream",
+    summary="Generate trip plan (streaming)",
+    description="Stream planning progress over SSE; the final frame carries the full plan. Always uses the LangGraph pipeline."
+)
+async def plan_trip_stream(request: TripRequest):
+    """Stream planning progress as SSE; the final `result` frame holds the plan."""
+    from ...graph.service import stream_trip_plan
+
+    def event_stream():
+        try:
+            for event in stream_trip_plan(request):
+                yield _sse(event)
+        except Exception as e:  # noqa: BLE001 - surface as a terminal SSE error frame
+            print(f"[trip] stream failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            yield _sse({"type": "error", "message": f"Failed to generate trip plan: {str(e)}"})
+
+    # Starlette iterates this sync generator in a threadpool, so the blocking
+    # graph run does not block the event loop.
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.get(
