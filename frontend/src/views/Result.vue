@@ -990,7 +990,15 @@ const isValidLocation = (location: any): boolean => {
   if (!location) return false
   const longitude = Number(location.longitude)
   const latitude = Number(location.latitude)
-  return Number.isFinite(longitude) && Number.isFinite(latitude)
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return false
+  // Reject null-island (0,0) and out-of-range coordinates. Without this a POI
+  // with missing/zero coords renders at lng/lat 0,0 (off West Africa), and a
+  // swapped lng/lat (e.g. latitude 23 landing in the longitude slot) also lands
+  // in Africa and drags the whole map there.
+  if (longitude === 0 && latitude === 0) return false
+  if (longitude < -180 || longitude > 180) return false
+  if (latitude < -90 || latitude > 90) return false
+  return true
 }
 
 const normalizeLocation = (location: any) => ({
