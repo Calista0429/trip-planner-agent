@@ -1,6 +1,7 @@
 """旅行规划API路由"""
 
 import asyncio
+import os
 
 from fastapi import APIRouter, HTTPException
 from ...models.schemas import (
@@ -92,19 +93,21 @@ async def plan_trip(request: TripRequest):
     description="检查旅行规划服务是否正常"
 )
 async def health_check():
-    """健康检查"""
-    try:
-        # 检查Agent是否可用
-        agent = get_trip_planner_agent()
+    """Lightweight liveness check reporting the active planner backend.
 
-        return {
-            "status": "healthy",
-            "service": "trip-planner",
-            "agent_name": agent.agent.name,
-            "tools_count": len(agent.agent.list_tools())
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"服务不可用: {str(e)}"
-        )
+    Deliberately avoids constructing the planner/LLM clients so polling stays
+    cheap and never 503s on transient init issues. (The previous version read
+    agent.agent.name, an attribute MultiAgentTripPlanner never had, so it always
+    crashed.)
+    """
+    settings = get_settings()
+    backend = "langgraph" if settings.use_langgraph_planner else "legacy-agent"
+    llm_configured = bool(os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY"))
+
+    return {
+        "status": "healthy",
+        "service": "trip-planner",
+        "backend": backend,
+        "amap_configured": bool(settings.amap_api_key),
+        "llm_configured": llm_configured,
+    }

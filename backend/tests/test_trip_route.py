@@ -92,3 +92,20 @@ def test_route_returns_500_on_planner_error(client, request_body, monkeypatch):
     resp = client.post("/trip/plan", json=request_body)
 
     assert resp.status_code == 500
+
+
+def test_health_reports_graph_backend(client):
+    settings.use_langgraph_planner = True
+    resp = client.get("/trip/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "healthy"
+    assert body["service"] == "trip-planner"
+    assert body["backend"] == "langgraph"
+
+
+def test_health_reports_legacy_backend(client):
+    settings.use_langgraph_planner = False
+    resp = client.get("/trip/health")
+    assert resp.status_code == 200
+    assert resp.json()["backend"] == "legacy-agent"
