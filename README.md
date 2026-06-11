@@ -162,6 +162,48 @@ npm run dev -- --host 0.0.0.0 --port 5173
 - `GET /api/poi/detail/{poi_id}`：获取 POI 详情
 - `GET /api/poi/photo`：获取景点图片
 
+## Troubleshooting
+
+### Planner returns empty plans / falls back every time (reasoning vs. chat models)
+
+**Symptom:** Every generation attempt fails and the API returns a generic
+fallback plan. `training/data/online_feedback/planner_failures.jsonl` shows
+repeated rows with an empty `rejected` field and the error
+`响应中未找到完整的顶层TripPlan JSON对象` ("no top-level TripPlan JSON object
+found").
+
+**Root cause:** `LLM_MODEL_ID` was set to a **reasoning model** (e.g.
+`deepseek-v4-flash`). Reasoning models emit their chain-of-thought in a separate
+`reasoning_content` field and only afterwards produce the answer in `content`.
+For the large, rule-heavy planner prompt the reasoning alone consumes the entire
+`max_tokens` budget (`finish_reason: length`, `reasoning_tokens == max_tokens`),
+so `content` comes back empty. The pipeline reads only `content` and expects a
+direct JSON object, so parsing always fails.
+
+Evidence (identical prompt, `max_tokens=2000`):
+
+| Model | finish_reason | content | reasoning_content |
+|-------|---------------|---------|-------------------|
+| `deepseek-v4-flash` (reasoning) | `length` | empty | 3271 chars |
+| `deepseek-chat` (non-reasoning) | `stop` | 9413 chars of JSON | empty |
+
+**Fix:** use a **non-reasoning chat model** that outputs JSON directly:
+
+```bash
+# backend/.env
+LLM_MODEL_ID=deepseek-chat
+```
+
+The planner pipeline (prompt design + `content`-only JSON extraction) is built
+for direct-output chat models, not reasoning models. Using a reasoning model
+would require a much larger `max_tokens` plus logic to read `reasoning_content`,
+which is slower and not supported here.
+
+**Guardrail:** the LangGraph planner now detects empty content and fails fast
+with `EmptyLLMResponseError` (logged with `preference_reason=planner_empty_response`)
+instead of the opaque "no JSON found" error, so this misconfiguration is obvious
+in the logs.
+
 ## 后训练资产
 
 `training/` 目录记录训练和评测主线。这里的做法是先由后端生成稳定、可审计的 `PlannerContext`，再让模型学习把它转换成合法的 `TripPlan JSON`。

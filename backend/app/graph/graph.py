@@ -37,6 +37,15 @@ PLANNER_RERANK_CANDIDATE_COUNT = max(1, int(os.getenv("PLANNER_RERANK_CANDIDATE_
 PLANNER_RERANK_TEMPERATURE_STEP = float(os.getenv("PLANNER_RERANK_TEMPERATURE_STEP", "0.08"))
 
 
+class EmptyLLMResponseError(ValueError):
+    """Raised when the planner LLM returns empty content (no answer text).
+
+    Typically a misconfigured reasoning model: its chain-of-thought is returned
+    in a separate `reasoning_content` field (which the LLM client discards) and
+    consumes the whole max_tokens budget before any `content` is produced.
+    """
+
+
 def build_planner_graph(
     runtime: PlannerRuntime,
     *,
@@ -133,6 +142,22 @@ def build_planner_graph(
             )
         except Exception as error:  # noqa: BLE001 - mirror old broad handling
             return record_failure("", error, "planner_llm_call_failed")
+
+        # 1.5) Empty content guard: a reasoning model can spend the whole
+        # max_tokens budget on reasoning_content and return empty content. Fail
+        # with an actionable message instead of the opaque "no JSON found" the
+        # parser would otherwise raise on an empty string.
+        if not (response or "").strip():
+            return record_failure(
+                response,
+                EmptyLLMResponseError(
+                    "LLM returned empty content. If LLM_MODEL_ID is a reasoning "
+                    "model, its chain-of-thought likely consumed the whole "
+                    "max_tokens budget before any content was produced; use a "
+                    "non-reasoning chat model (e.g. deepseek-chat)."
+                ),
+                "planner_empty_response",
+            )
 
         # 2) Parse/validate failure: keep retrying (a clean retry often fixes it).
         try:
