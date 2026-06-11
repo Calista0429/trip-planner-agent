@@ -1,0 +1,12 @@
+[
+  {
+    "cost_source": "amap_cost",
+    "estimated_cost_hint": 400,
+    "name": "如家酒店"
+  },
+  {
+    "cost_source": "rule_estimated",
+    "estimated_cost_hint": 500,
+    "name": "某舒适酒店"
+  }
+]

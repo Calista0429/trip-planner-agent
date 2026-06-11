@@ -1,0 +1,31 @@
+{
+  "attraction_budget_party_relation_ok": true,
+  "attraction_diversity_ok": true,
+  "attraction_grounding_ok": true,
+  "attraction_grounding_rate": 1.0,
+  "budget_arithmetic_consistent": true,
+  "budget_fit_closeness": 0.0,
+  "budget_fit_distance_ratio": 0.0,
+  "budget_hard_constraint_ok": true,
+  "budget_relationship_ok": true,
+  "budget_target_max_total": 0,
+  "budget_target_min_total": 0,
+  "hotel_budget_relation_ok": true,
+  "hotel_grounding_ok": true,
+  "hotel_grounding_rate": 1.0,
+  "meal_cost_scale_ok": true,
+  "meal_diversity_ok": true,
+  "meal_grounding_ok": true,
+  "meal_grounding_rate": 1.0,
+  "meal_lunch_dinner_same_day_ok": true,
+  "meal_repeat_limit_ok": true,
+  "recomputed_budget": {
+    "total": 1030,
+    "total_attractions": 120,
+    "total_hotels": 400,
+    "total_meals": 410,
+    "total_transportation": 100
+  },
+  "recomputed_budget_fit_ok": true,
+  "recomputed_budget_total": 1030
+}

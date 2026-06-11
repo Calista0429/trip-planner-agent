@@ -1,0 +1,14 @@
+[
+  {
+    "cost_source": "amap_cost",
+    "meal_cost_hint": 23,
+    "name": "庆丰包子铺",
+    "price_level": "budget"
+  },
+  {
+    "cost_source": "rule_estimated",
+    "meal_cost_hint": 60,
+    "name": "某午餐馆",
+    "price_level": "standard"
+  }
+]
