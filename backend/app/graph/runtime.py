@@ -55,6 +55,14 @@ class PlannerRuntime:
     collect_hotels: Optional[Callable[[TripRequest], dict[str, Any]]] = None
     empty_context: Optional[Callable[[TripRequest], dict[str, Any]]] = None
 
+    # Optional observability sinks. Persist one online-feedback failure row, and
+    # log DPO preference candidates (rejected failures vs the chosen plan). Left
+    # as None in tests so the graph stays side-effect free.
+    record_failure: Optional[Callable[[dict[str, Any]], None]] = None
+    record_preferences: Optional[
+        Callable[[str, TripRequest, TripPlan, list[dict[str, Any]], str], None]
+    ] = None
+
     def supports_fanout(self) -> bool:
         """True when the runtime can drive the parallel context fan-out."""
         return all(
@@ -81,6 +89,11 @@ def default_parse_plan(
 
 def build_default_runtime() -> PlannerRuntime:
     """Wire the real services. Imported lazily to keep the graph import light."""
+    from ..agents.planner_feedback import (
+        PLANNER_FAILURE_LOG,
+        append_jsonl,
+        log_preference_candidates,
+    )
     from ..config import get_settings
     from ..planner.context import PlannerContextBuilder
     from ..services.llm_service import get_llm, get_planner_llm
@@ -111,4 +124,6 @@ def build_default_runtime() -> PlannerRuntime:
         collect_weather=builder._collect_weather_snapshot,
         collect_hotels=builder._collect_hotel_snapshot,
         empty_context=builder.empty_context,
+        record_failure=lambda row: append_jsonl(PLANNER_FAILURE_LOG, row),
+        record_preferences=log_preference_candidates,
     )

@@ -108,6 +108,21 @@ def build_planner_graph(
             {"role": "user", "content": state["planner_query"]},
         ]
 
+        def record_failure(response: str, error: Exception, reason: str) -> dict[str, Any]:
+            row = build_failure_row(
+                label=label,
+                attempt=attempt,
+                max_attempts=max_attempts,
+                request=request,
+                planner_query=state["planner_query"],
+                response=response,
+                error=error,
+                preference_reason=reason,
+            )
+            if runtime.record_failure is not None:
+                runtime.record_failure(row)
+            return {"attempt": attempt, "failures": [row]}
+
         # 1) LLM call failure: record and let the router decide retry/fallback.
         try:
             response = llm.invoke(
@@ -117,40 +132,13 @@ def build_planner_graph(
                 timeout=PLANNER_REQUEST_TIMEOUT,
             )
         except Exception as error:  # noqa: BLE001 - mirror old broad handling
-            return {
-                "attempt": attempt,
-                "failures": [
-                    build_failure_row(
-                        label=label,
-                        attempt=attempt,
-                        max_attempts=max_attempts,
-                        request=request,
-                        planner_query=state["planner_query"],
-                        response="",
-                        error=error,
-                        preference_reason="planner_llm_call_failed",
-                    )
-                ],
-            }
+            return record_failure("", error, "planner_llm_call_failed")
 
         # 2) Parse/validate failure: keep retrying (a clean retry often fixes it).
         try:
             plan = runtime.parse_plan(response, request, context)
         except Exception as error:  # noqa: BLE001
-            return {
-                "attempt": attempt,
-                "failures": [
-                    build_failure_row(
-                        label=label,
-                        attempt=attempt,
-                        max_attempts=max_attempts,
-                        request=request,
-                        planner_query=state["planner_query"],
-                        response=response,
-                        error=error,
-                    )
-                ],
-            }
+            return record_failure(response, error, "planner_schema_invalid")
 
         return {"attempt": attempt, "candidates": [{"attempt": attempt, "plan": plan}]}
 
@@ -163,7 +151,18 @@ def build_planner_graph(
         context = state.get("planner_context") or {}
         pairs = [(c["attempt"], c["plan"]) for c in state.get("candidates", [])]
         ranked = rerank_trip_plan_candidates(pairs, request, context)
-        return {"final_plan": ranked[0].trip_plan, "status": "llm_success"}
+        chosen = ranked[0].trip_plan
+
+        # Turn the failures collected on the way into DPO preference pairs
+        # (rejected outputs vs the chosen plan), as the legacy planner did.
+        failures = state.get("failures", [])
+        if failures and runtime.record_preferences is not None:
+            label = runtime.fallback_label if state.get("use_fallback_llm") else runtime.primary_label
+            runtime.record_preferences(
+                state.get("planner_query", ""), request, chosen, failures, label
+            )
+
+        return {"final_plan": chosen, "status": "llm_success"}
 
     def fallback_plan(state: TripPlanState) -> dict[str, Any]:
         return {
