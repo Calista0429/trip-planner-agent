@@ -305,7 +305,7 @@ import {
   RocketOutlined,
   TeamOutlined
 } from '@ant-design/icons-vue'
-import { generateTripPlan } from '@/services/api'
+import { streamTripPlan } from '@/services/api'
 import type { TripFormData } from '@/types'
 import type { Dayjs } from 'dayjs'
 
@@ -439,6 +439,24 @@ watch([() => formData.party.adults, () => formData.party.children, () => formDat
   }
 })
 
+// Map a streamed planning phase to a monotonic progress value (never regresses).
+const PHASE_PROGRESS: Record<string, number> = {
+  collecting_context: 25,
+  building_query: 35,
+  switching_model: 75,
+  reranking: 90,
+  fallback: 90
+}
+
+function nextProgress(phase: string | undefined, attempt: number | undefined, current: number): number {
+  if (phase === 'generating') {
+    // Each generate attempt nudges progress forward but stays below rerank.
+    return Math.min(85, Math.max(current, 40 + (attempt ?? 1) * 8))
+  }
+  const target = phase ? PHASE_PROGRESS[phase] ?? current : current
+  return Math.max(current, target)
+}
+
 const handleSubmit = async () => {
   if (!formData.start_date || !formData.end_date) {
     message.error('请选择日期')
@@ -452,25 +470,7 @@ const handleSubmit = async () => {
 
   loading.value = true
   loadingProgress.value = 0
-  loadingStatus.value = '正在初始化...'
-
-  // 模拟进度更新
-  const progressInterval = setInterval(() => {
-    if (loadingProgress.value < 90) {
-      loadingProgress.value += 10
-
-      // 更新状态文本
-      if (loadingProgress.value <= 30) {
-        loadingStatus.value = '🔍 正在搜索景点...'
-      } else if (loadingProgress.value <= 50) {
-        loadingStatus.value = '🌤️ 正在查询天气...'
-      } else if (loadingProgress.value <= 70) {
-        loadingStatus.value = '🏨 正在推荐酒店...'
-      } else {
-        loadingStatus.value = '📋 正在生成行程计划...'
-      }
-    }
-  }, 500)
+  loadingStatus.value = 'Starting...'
 
   try {
     const budgetAmount = formData.budget_constraint.amount
@@ -500,28 +500,24 @@ const handleSubmit = async () => {
       }
     }
 
-    const response = await generateTripPlan(requestData)
+    const plan = await streamTripPlan(requestData, (event) => {
+      if (event.type === 'progress') {
+        if (event.message) loadingStatus.value = event.message
+        loadingProgress.value = nextProgress(event.phase, event.attempt, loadingProgress.value)
+      }
+    })
 
-    clearInterval(progressInterval)
     loadingProgress.value = 100
-    loadingStatus.value = '✅ 完成!'
+    loadingStatus.value = 'Done!'
 
-    if (response.success && response.data) {
-      // 保存到sessionStorage
-      sessionStorage.setItem('tripPlan', JSON.stringify(response.data))
-
-      message.success('旅行计划生成成功!')
-
-      // 短暂延迟后跳转
-      setTimeout(() => {
-        router.push('/result')
-      }, 500)
-    } else {
-      message.error(response.message || '生成失败')
-    }
+    // Persist the plan and navigate to the result page.
+    sessionStorage.setItem('tripPlan', JSON.stringify(plan))
+    message.success('Trip plan generated!')
+    setTimeout(() => {
+      router.push('/result')
+    }, 500)
   } catch (error: any) {
-    clearInterval(progressInterval)
-    message.error(error.message || '生成旅行计划失败,请稍后重试')
+    message.error(error.message || 'Failed to generate trip plan, please retry')
   } finally {
     setTimeout(() => {
       loading.value = false
