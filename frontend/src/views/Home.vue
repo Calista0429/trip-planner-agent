@@ -153,6 +153,14 @@
                     style="width: 100%"
                     placeholder="可不填"
                   />
+                  <!-- Strict (hard) budget: only meaningful once an amount is entered. -->
+                  <a-checkbox
+                    v-model:checked="strictBudget"
+                    :disabled="formData.budget_constraint.amount === null || formData.budget_constraint.amount === undefined"
+                    style="margin-top: 8px"
+                  >
+                    不可超支
+                  </a-checkbox>
                 </a-form-item>
               </a-col>
               <a-col :xs="{ span: 24 }" :md="{ span: 4 }">
@@ -313,6 +321,8 @@ const router = useRouter()
 const loading = ref(false)
 const loadingProgress = ref(0)
 const loadingStatus = ref('')
+// Hard budget toggle: when checked (and an amount is set) strictness becomes 'hard'.
+const strictBudget = ref(false)
 
 const companionTypeOptions = [
   { label: '独行', value: 'solo' },
@@ -477,7 +487,13 @@ const handleSubmit = async () => {
 
   try {
     const budgetAmount = formData.budget_constraint.amount
-    const budgetStrictness = budgetAmount === null || budgetAmount === undefined ? 'none' : 'soft'
+    // No amount -> 'none'; amount + strict toggle -> 'hard'; amount only -> 'soft'.
+    const budgetStrictness =
+      budgetAmount === null || budgetAmount === undefined
+        ? 'none'
+        : strictBudget.value
+          ? 'hard'
+          : 'soft'
     const requestData: TripFormData = {
       city: formData.city,
       start_date: formData.start_date.format('YYYY-MM-DD'),
