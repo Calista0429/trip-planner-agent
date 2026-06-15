@@ -8,6 +8,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+# 让脚本独立运行时能 import app.*
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 
 def main() -> int:
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
