@@ -24,6 +24,7 @@ class RAGConfig:
 
     @classmethod
     def from_env(cls) -> "RAGConfig":
+        """Reads only the operational env vars QDRANT_URL, QDRANT_API_KEY, MODELSCOPE_API_KEY, RAG_COLLECTION, RAG_CREDIBILITY_THRESHOLD; the remaining fields (model id, dims, rerank weights) are intentionally kept as code-level tuning defaults."""
         return cls(
             qdrant_url=os.getenv("QDRANT_URL", "http://localhost:6333"),
             qdrant_api_key=os.getenv("QDRANT_API_KEY") or None,

@@ -1,4 +1,3 @@
-import os
 from app.rag.config import RAGConfig
 
 

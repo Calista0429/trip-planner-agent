@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-@dataclass(frozen=True)
+@dataclass
 class SparseVec:
     """稀疏向量：token-id -> 词频。"""
     indices: list[int]
