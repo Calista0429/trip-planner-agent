@@ -1,3 +1,5 @@
+import time
+
 from app.rag.credibility import CredibilityCalculator
 
 C = CredibilityCalculator()
@@ -7,7 +9,7 @@ PERFECT = {
     "image_count": 9, "desc": "地址：北京 营业时间：9-17 " + "好玩" * 200,
     "likes": 100, "collects": 60, "comments": 30,
     "useful_comments_ratio": 0.9,
-    "publish_time": __import__("time").time(),  # 当下
+    "publish_time": time.time(),  # 当下
 }
 
 

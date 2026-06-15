@@ -33,23 +33,25 @@ class CredibilityCalculator:
         self.max_age_days, self.min_images, self.min_desc_len = max_age_days, min_images, min_desc_len
 
     def calculate(self, post: dict[str, Any]) -> CredibilityScore:
-        creator, cd = self._creator(post)
-        content, cnd = self._content(post)
-        community, cmd = self._community(post)
-        freshness, fd = self._freshness(post)
+        creator, creator_detail = self._creator(post)
+        content, content_detail = self._content(post)
+        community, community_detail = self._community(post)
+        freshness, freshness_detail = self._freshness(post)
         # ★归一化：每维 /各自满分
-        creator_n = creator / _CREATOR_MAX
-        content_n = content / _CONTENT_MAX
-        community_n = community / _COMMUNITY_MAX
+        # freshness 已是 [0,1]，其余三维归一并 clamp 防止子分扩展时溢出
+        creator_n = min(1.0, creator / _CREATOR_MAX)
+        content_n = min(1.0, content / _CONTENT_MAX)
+        community_n = min(1.0, community / _COMMUNITY_MAX)
         final = (creator_n * self.creator_w + content_n * self.content_w
                  + community_n * self.community_w + freshness * self.freshness_w)
         return CredibilityScore(
             final=round(final, 3), creator=round(creator_n, 3), content=round(content_n, 3),
             community=round(community_n, 3), freshness=round(freshness, 3),
-            details={"creator": cd, "content": cnd, "community": cmd, "freshness": fd},
+            details={"creator": creator_detail, "content": content_detail,
+                     "community": community_detail, "freshness": freshness_detail},
         )
 
-    def _creator(self, p):
+    def _creator(self, p) -> tuple[float, dict[str, Any]]:
         s, d = 0.0, {}
         if p.get("is_verified", False):
             s += 0.3
@@ -61,7 +63,7 @@ class CredibilityCalculator:
         d["follower_score"] = round(fs, 3)
         return s, d
 
-    def _content(self, p):
+    def _content(self, p) -> tuple[float, dict[str, Any]]:
         s, d = 0.0, {}
         ic = p.get("image_count", len(p.get("image_urls", []) or []))
         if ic >= self.min_images and p.get("has_real_photos", True):
@@ -76,7 +78,7 @@ class CredibilityCalculator:
         d["image_count"], d["desc_len"] = ic, len(desc)
         return s, d
 
-    def _community(self, p):
+    def _community(self, p) -> tuple[float, dict[str, Any]]:
         s, d = 0.0, {}
         likes = p.get("likes", 0) or 0
         collects = p.get("collects", 0) or 0
@@ -91,7 +93,7 @@ class CredibilityCalculator:
         d["useful_ok"] = useful_ok
         return s, d
 
-    def _freshness(self, p):
+    def _freshness(self, p) -> tuple[float, dict[str, Any]]:
         d = {}
         pt = p.get("publish_time")
         if pt is None:
