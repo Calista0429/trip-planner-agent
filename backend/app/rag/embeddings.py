@@ -54,7 +54,8 @@ class ModelScopeDenseEmbedder:
     def embed(self, texts: list[str]) -> list[list[float]]:
         url = f"{self._cfg.modelscope_base_url}/embeddings"
         headers = {"Authorization": f"Bearer {self._cfg.modelscope_api_key}"}
-        payload = {"model": self._cfg.dense_model, "input": texts}
+        # ModelScope 要求显式 encoding_format（OpenAI 客户端默认带，手写 httpx 需补）
+        payload = {"model": self._cfg.dense_model, "input": texts, "encoding_format": "float"}
         last_err: Exception | None = None
         for attempt in range(3):
             try:
