@@ -26,6 +26,12 @@ PLANNER_CONTEXT_CACHE_TTL_SECONDS = int(
 PLANNER_CONTEXT_AMAP_CACHE_TTL_SECONDS = int(
     os.getenv("PLANNER_CONTEXT_AMAP_CACHE_TTL_SECONDS", str(PLANNER_CONTEXT_CACHE_TTL_SECONDS))
 )
+# Weather is a rolling ~4-day forecast that shifts daily, so it must NOT inherit
+# the long POI cache TTL. A forecast cached days ago no longer covers the trip
+# dates and degrades every day to "未知". Refresh it a few times a day instead.
+PLANNER_CONTEXT_WEATHER_CACHE_TTL_SECONDS = int(
+    os.getenv("PLANNER_CONTEXT_WEATHER_CACHE_TTL_SECONDS", str(3 * 60 * 60))
+)
 PLANNER_CONTEXT_CLASSIC_CACHE_TTL_SECONDS = int(
     os.getenv("PLANNER_CONTEXT_CLASSIC_CACHE_TTL_SECONDS", str(PLANNER_CONTEXT_CACHE_TTL_SECONDS))
 )
@@ -56,17 +62,28 @@ class AmapPlannerClient:
         self.api_key = api_key
         self.cache_dir = self._resolve_cache_dir(cache_dir)
 
-    def get(self, path: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """调用高德HTTP API，并在入口统一做缓存和限速。"""
+    def get(
+        self,
+        path: str,
+        params: Dict[str, Any],
+        ttl_seconds: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """调用高德HTTP API，并在入口统一做缓存和限速。
+
+        ttl_seconds 可按调用方覆盖缓存时长（如天气需要短 TTL），不传则用默认。
+        """
         if not self.api_key:
             raise ValueError("AMAP_API_KEY未配置")
 
+        effective_ttl = (
+            PLANNER_CONTEXT_AMAP_CACHE_TTL_SECONDS if ttl_seconds is None else ttl_seconds
+        )
         query_params = {key: value for key, value in params.items() if value not in (None, "")}
         cache_path = self._amap_cache_path(path, query_params)
         cached = self._read_cache(
             cache_path,
             value_key="data",
-            ttl_seconds=PLANNER_CONTEXT_AMAP_CACHE_TTL_SECONDS,
+            ttl_seconds=effective_ttl,
         )
         if cached is not None:
             if PLANNER_CONTEXT_CACHE_VERBOSE:
@@ -87,7 +104,7 @@ class AmapPlannerClient:
                     cache_path,
                     data,
                     value_key="data",
-                    ttl_seconds=PLANNER_CONTEXT_AMAP_CACHE_TTL_SECONDS,
+                    ttl_seconds=effective_ttl,
                     label="amap",
                 )
                 return data

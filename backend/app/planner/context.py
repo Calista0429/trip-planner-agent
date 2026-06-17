@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict
 
 from ..models.schemas import TripRequest
-from .amap import AmapPlannerClient
+from .amap import AmapPlannerClient, PLANNER_CONTEXT_WEATHER_CACHE_TTL_SECONDS
 from .compact import compact_for_planner as compact_planner_context
 from .dates import trip_date_strings, unknown_weather_row
 from .debug import (
@@ -292,7 +292,11 @@ class PlannerContextBuilder:
 
     def _collect_weather_snapshot(self, request: TripRequest) -> Dict[str, Any]:
         """查询天气，并把短期预报对齐到真实行程日期。"""
-        raw = self.amap_client.get("/weather/weatherInfo", {"city": request.city, "extensions": "all"})
+        raw = self.amap_client.get(
+            "/weather/weatherInfo",
+            {"city": request.city, "extensions": "all"},
+            ttl_seconds=PLANNER_CONTEXT_WEATHER_CACHE_TTL_SECONDS,
+        )
         available_weather = normalize_weather(raw)
         trip_weather = align_trip_weather(request, available_weather)
         covered = [item for item in trip_weather if item.get("source") == "amap_forecast"]
