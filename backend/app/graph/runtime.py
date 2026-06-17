@@ -63,6 +63,11 @@ class PlannerRuntime:
         Callable[[str, TripRequest, TripPlan, list[dict[str, Any]], str], None]
     ] = None
 
+    # Optional Critic Agent. When present, the graph appends a reflection loop
+    # (rerank/winner -> critic -> revise -> critic -> finalize). When None
+    # (default, and in most tests) the graph ends right after rerank as before.
+    critic: Optional[Any] = None
+
     def supports_fanout(self) -> bool:
         """True when the runtime can drive the parallel context fan-out."""
         return all(
@@ -108,6 +113,12 @@ def build_default_runtime() -> PlannerRuntime:
     primary_llm = get_planner_llm()
     fallback_llm = get_llm()
 
+    critic = None
+    if os.getenv("PLANNER_ENABLE_CRITIC", "0") == "1":
+        from ..agents.critic import CriticAgent
+
+        critic = CriticAgent(llm=fallback_llm)
+
     return PlannerRuntime(
         collect_context=builder.collect,
         build_query=lambda request, context: build_planner_query(
@@ -126,4 +137,5 @@ def build_default_runtime() -> PlannerRuntime:
         empty_context=builder.empty_context,
         record_failure=lambda row: append_jsonl(PLANNER_FAILURE_LOG, row),
         record_preferences=log_preference_candidates,
+        critic=critic,
     )

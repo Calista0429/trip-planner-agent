@@ -45,6 +45,13 @@ class TripPlanState(TypedDict, total=False):
     attempt: int
     use_fallback_llm: bool
 
+    # --- reflection loop (critic), only used when a critic runtime is wired ---
+    # critique: the latest CritiqueReport (kept as Any to avoid an import cycle).
+    critique: Any
+    revise_round: int
+    # one frozenset of blocking codes per revise round; used for anti-oscillation.
+    critique_history: Annotated[list[Any], operator.add]
+
     # --- terminal output ---
     final_plan: Optional[TripPlan]
     status: str

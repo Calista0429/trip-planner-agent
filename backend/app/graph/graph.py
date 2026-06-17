@@ -1,7 +1,5 @@
 """Planning graph assembly.
 
-Control flow mirrors the old ``MultiAgentTripPlanner``:
-
     collect_context -> build_query -> generate
         generate --(enough candidates)--> rerank -> END
         generate --(attempts left)-----> generate
@@ -30,6 +28,7 @@ from .runtime import PlannerRuntime, build_default_runtime
 from .state import TripPlanState
 
 PLANNER_MAX_ATTEMPTS = int(os.getenv("PLANNER_MAX_ATTEMPTS", "5"))
+PLANNER_MAX_REVISE = int(os.getenv("PLANNER_MAX_REVISE", "2"))
 PLANNER_TEMPERATURE = float(os.getenv("PLANNER_TEMPERATURE", "0.2"))
 PLANNER_REQUEST_TIMEOUT = int(os.getenv("PLANNER_REQUEST_TIMEOUT", "600"))
 PLANNER_ENABLE_RERANK = os.getenv("PLANNER_ENABLE_RERANK", "1") == "1"
@@ -44,6 +43,21 @@ class EmptyLLMResponseError(ValueError):
     in a separate `reasoning_content` field (which the LLM client discards) and
     consumes the whole max_tokens budget before any `content` is produced.
     """
+
+
+def build_revise_message(plan: TripPlan, critique: Any) -> str:
+    """聚焦的修订指令：原方案 + 必须修正的 blocking 问题，只改被点名处。"""
+    lines = ["你之前输出的行程(JSON)：", plan.model_dump_json(exclude_none=True), "", "以下问题必须修正："]
+    for v in critique.violations:
+        if v.severity != "blocking":
+            continue
+        loc = ""
+        if v.where and (v.where.day_index is not None or v.where.field):
+            loc = f"(day{v.where.day_index} {v.where.field or ''})".strip()
+        lines.append(f"- [{v.code}]{loc} {v.detail} —— 建议：{v.fix_hint}")
+    lines.append("")
+    lines.append("只修订被点名的字段，其余尽量原样保留。重新输出完整的 TripPlan JSON（只输出 JSON，不要任何解释或代码块标记）。")
+    return "\n".join(lines)
 
 
 def build_planner_graph(
@@ -210,12 +224,75 @@ def build_planner_graph(
             return "switch_fallback"
         return "fallback"
 
+    # --- reflection loop (only wired when runtime.critic is set) ---
+    critic_enabled = runtime.critic is not None
+
+    def critic_node(state: TripPlanState) -> dict[str, Any]:
+        request: TripRequest = state["request"]
+        context = state.get("planner_context") or {}
+        rnd = state.get("revise_round", 0)
+        report = runtime.critic.review(state["final_plan"], request, context, round=rnd)
+        return {"critique": report}
+
+    def route_after_critic(state: TripPlanState) -> str:
+        report = state.get("critique")
+        rnd = state.get("revise_round", 0)
+        history = state.get("critique_history", [])
+        if report is None or not report.has_blocking():
+            return "finalize"
+        if rnd >= PLANNER_MAX_REVISE:
+            return "finalize"
+        codes = report.blocking_codes()
+        if codes and history[-1:] == [codes]:  # 同组 blocking 连续两轮没消 -> 止损
+            return "finalize"
+        return "revise"
+
+    def revise_node(state: TripPlanState) -> dict[str, Any]:
+        request = state["request"]
+        context = state.get("planner_context") or {}
+        report = state.get("critique")
+        rnd = state.get("revise_round", 0)
+        plan = state["final_plan"]
+        llm = runtime.fallback_llm if state.get("use_fallback_llm") else runtime.primary_llm
+        messages = [
+            {"role": "system", "content": PLANNER_AGENT_PROMPT},
+            {"role": "user", "content": build_revise_message(plan, report)},
+        ]
+        revised = plan
+        try:
+            response = llm.invoke(
+                messages,
+                max_tokens=planner_max_output_tokens(request),
+                temperature=PLANNER_TEMPERATURE,
+                timeout=PLANNER_REQUEST_TIMEOUT,
+            )
+            if (response or "").strip():
+                revised = runtime.parse_plan(response, request, context)
+        except Exception:  # noqa: BLE001 - 修订失败保留原方案；下轮同样 blocking -> 防震荡终止
+            revised = plan
+        return {
+            "final_plan": revised,
+            "revise_round": rnd + 1,
+            "critique_history": [report.blocking_codes() if report else frozenset()],
+            "status": "critic_revised",
+        }
+
+    def finalize_node(state: TripPlanState) -> dict[str, Any]:
+        report = state.get("critique")
+        passed = report is not None and not report.has_blocking()
+        return {"status": "critic_passed" if passed else "critic_exhausted"}
+
     graph = StateGraph(TripPlanState)
     graph.add_node("build_query", build_query)
     graph.add_node("generate", generate)
     graph.add_node("switch_fallback", switch_fallback)
     graph.add_node("rerank", rerank_node)
     graph.add_node("fallback", fallback_plan)
+
+    if critic_enabled:
+        graph.add_node("critic", critic_node)
+        graph.add_node("revise", revise_node)
+        graph.add_node("finalize", finalize_node)
 
     if runtime.supports_fanout():
         # Parallel fan-out: three collectors run concurrently, then merge.
@@ -245,8 +322,17 @@ def build_planner_graph(
         },
     )
     graph.add_edge("switch_fallback", "generate")
-    graph.add_edge("rerank", END)
     graph.add_edge("fallback", END)
+    if critic_enabled:
+        # rerank winner -> reflection loop -> finalize.
+        graph.add_edge("rerank", "critic")
+        graph.add_conditional_edges(
+            "critic", route_after_critic, {"revise": "revise", "finalize": "finalize"}
+        )
+        graph.add_edge("revise", "critic")
+        graph.add_edge("finalize", END)
+    else:
+        graph.add_edge("rerank", END)
 
     return graph.compile()
 
