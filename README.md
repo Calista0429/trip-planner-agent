@@ -1,69 +1,70 @@
 # HelloAgents Trip Planner
 
-一个面向真实旅行规划场景的智能旅行助手。仓库里有可运行的 Web 应用、FastAPI 后端、基于高德地图的结构化工具快照，也保留了后训练数据和评测口径。
+An intelligent travel assistant for real-world trip-planning scenarios. The repo ships a runnable web app, a FastAPI backend, structured tool snapshots backed by Amap (Gaode Maps), and keeps the post-training data and evaluation conventions.
 
-当前公开仓库聚焦稳定的 Planner 主线：后端把用户请求、人数、预算、住宿、天气、景点、酒店、餐饮和价格 hint 编译成可审计的 `PlannerContext`，Planner 模型再在这些约束内生成结构化 `TripPlan JSON`。历史实验管线、私有交流记录、模型权重、训练 checkpoint、运行日志和本地密钥不会上传。
+The public repo focuses on the stable Planner mainline: the backend compiles the user request, party size, budget, accommodation, weather, attractions, hotels, food, and price hints into an auditable `PlannerContext`, and the Planner model then generates a structured `TripPlan JSON` within those constraints. Historical experiment pipelines, private discussion logs, model weights, training checkpoints, run logs, and local secrets are not uploaded.
 
-## 功能
+## Features
 
-- 生成多日旅行计划：目的地、日期、同行人数、预算、交通、住宿和偏好共同约束输出。
-- 结构化工具快照：后端收集景点、酒店、餐饮、天气、价格 hint 和候选计数，减少模型自由编造。
-- 预算账本训练口径：显式区分酒店单房每晚价、景点成人票价、餐饮单人单餐价和同行人数。
-- Web 交互界面：Vue 3 + TypeScript + Ant Design Vue，支持旅行需求填写和结果展示。
-- 后训练资产：包含 SFT 数据、冻结评估集、规则评测指标、baseline 汇总和数据生成脚本。
+- Generate multi-day trip plans: destination, dates, party size, budget, transportation, accommodation, and preferences jointly constrain the output.
+- Structured tool snapshots: the backend collects attractions, hotels, food, weather, price hints, and candidate counts to reduce model fabrication.
+- Budget-ledger training convention: explicitly separates hotel per-room nightly price, adult attraction ticket price, per-person per-meal price, and party size.
+- Web UI: Vue 3 + TypeScript + Ant Design Vue, supporting trip-request input and result display.
+- Post-training assets: SFT data, frozen evaluation sets, rule-based eval metrics, baseline summaries, and data-generation scripts.
 
-## 界面预览
+## UI Preview
 
-旅行请求填写：
+Trip request form:
 
-<img src="docs/images/trip-request.png" alt="旅行请求填写界面" width="720">
+<img src="docs/images/trip-request.png" alt="Trip request form" width="720">
 
-旅行计划结果：
+Trip plan result:
 
-<img src="docs/images/trip-plan-result.png" alt="旅行计划结果界面" width="720">
+<img src="docs/images/trip-plan-result.png" alt="Trip plan result" width="720">
 
-## 技术栈
+## Tech Stack
 
-后端：
+Backend:
 
 - FastAPI
 - HelloAgents `SimpleAgent`
-- 高德地图 HTTP API / amap MCP 辅助接口
-- OpenAI-compatible LLM 服务
-- Pydantic schema 校验
+- Amap (Gaode) HTTP API / amap MCP helper interfaces
+- OpenAI-compatible LLM service
+- Pydantic schema validation
 
-前端：
+Frontend:
 
 - Vue 3
 - TypeScript
 - Vite
 - Ant Design Vue
-- 高德地图 Web JS API
+- Amap (Gaode) Web JS API
 
-训练与评测：
+Training & evaluation:
 
-- LLaMA-Factory 数据格式
-- `PlannerContext` 协议
-- 规则评测脚本
-- SFT / DPO 数据准备脚本
+- LLaMA-Factory data format
+- `PlannerContext` protocol
+- Rule-based evaluation scripts
+- SFT / DPO data-preparation scripts
 
-## 目录结构
+## Directory Structure
 
-完整目录职责和本地/公开资产边界见 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)。
+See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for full directory responsibilities and the local/public asset boundary.
 
 ```text
 helloagents-trip-planner/
 ├── backend/
 │   ├── app/
-│   │   ├── agents/          # Planner Agent、prompt 和生成失败反馈
-│   │   ├── api/             # FastAPI 路由
-│   │   ├── models/          # TripRequest / TripPlan schema
-│   │   ├── planner/         # PlannerContext、预算、票价、路线和输出校验
-│   │   └── services/        # LLM、高德、图片等服务封装
+│   │   ├── agents/          # Planner Agent, prompts, and generation-failure feedback
+│   │   ├── api/             # FastAPI routes
+│   │   ├── models/          # TripRequest / TripPlan schemas
+│   │   ├── planner/         # PlannerContext, budget, ticket prices, routes, output validation
+│   │   ├── rag/             # Optional RAG retrieval (Qdrant hybrid search)
+│   │   └── services/        # LLM, Amap, image, and other service wrappers
 │   ├── requirements.txt
 │   └── run.py
 ├── docs/
-│   └── images/              # README 展示截图
+│   └── images/              # README screenshots
 ├── frontend/
 │   ├── src/
 │   │   ├── services/
@@ -71,29 +72,29 @@ helloagents-trip-planner/
 │   │   └── views/
 │   ├── package.json
 │   └── vite.config.ts
-├── skills/               # Codex 本地工作流技能
+├── skills/               # Codex local-workflow skills
 ├── training/
-│   ├── configs/             # 按模型分组的训练配置
-│   ├── data/                # 训练/评估数据
-│   ├── docs/                # 协议、指标和后训练说明
-│   ├── outputs/eval/        # 公开的评测汇总
-│   ├── prompts/             # 数据生成 prompt
-│   └── scripts/             # 训练脚本，按 shared/serving/validation 和当前任务分组
-├── PROJECT_STRUCTURE.md  # 项目级目录索引
+│   ├── configs/             # Training configs grouped by model
+│   ├── data/                # Training / evaluation data
+│   ├── docs/                # Protocol, metrics, and post-training notes
+│   ├── outputs/eval/        # Public evaluation summaries
+│   ├── prompts/             # Data-generation prompts
+│   └── scripts/             # Training scripts, grouped by shared/serving/validation and current task
+├── PROJECT_STRUCTURE.md  # Project-level directory index
 └── README.md
 ```
 
-## 快速开始
+## Quick Start
 
-### 前置条件
+### Prerequisites
 
 - Python 3.11
-- Node.js 22 或兼容版本
-- 高德地图 API Key
+- Node.js 22 or compatible
+- Amap (Gaode) API Key
 - OpenAI-compatible LLM API Key
-- 可选：Unsplash API Key，用于景点图片
+- Optional: Unsplash API Key for attraction images
 
-### 后端
+### Backend
 
 ```bash
 cd helloagents-trip-planner/backend
@@ -103,7 +104,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-编辑 `backend/.env`，至少配置：
+Edit `backend/.env` and set at least:
 
 ```bash
 AMAP_API_KEY=your_amap_api_key
@@ -112,19 +113,19 @@ LLM_API_KEY=your_llm_api_key
 LLM_BASE_URL=your_openai_compatible_base_url
 ```
 
-启动服务：
+Start the service:
 
 ```bash
 python run.py
 ```
 
-默认地址：
+Default addresses:
 
 - API: `http://localhost:7000`
 - Swagger: `http://localhost:7000/docs`
 - Health check: `http://localhost:7000/health`
 
-### 前端
+### Frontend
 
 ```bash
 cd helloagents-trip-planner/frontend
@@ -132,7 +133,7 @@ npm ci
 cp .env.example .env
 ```
 
-编辑 `frontend/.env`：
+Edit `frontend/.env`:
 
 ```bash
 VITE_API_BASE_URL=http://localhost:7000
@@ -140,28 +141,28 @@ VITE_AMAP_WEB_KEY=your_amap_web_key
 VITE_AMAP_WEB_JS_KEY=your_amap_web_js_key
 ```
 
-启动开发服务：
+Start the dev server:
 
 ```bash
 npm run dev -- --host 0.0.0.0 --port 5173
 ```
 
-默认地址：
+Default address:
 
 - Web: `http://localhost:5173`
 
-## API 概览
+## API Overview
 
-启动后端后可以访问 `http://localhost:7000/docs` 查看完整 OpenAPI 文档。主要接口：
+After starting the backend, visit `http://localhost:7000/docs` for the full OpenAPI documentation. Main endpoints:
 
-- `POST /api/trip/plan`：生成旅行计划
-- `GET /api/trip/health`：检查 Planner 服务
-- `GET /api/map/poi`：搜索 POI
-- `GET /api/map/weather`：查询天气
-- `POST /api/map/route`：规划路线
-- `GET /api/poi/detail/{poi_id}`：获取 POI 详情
-- `GET /api/poi/photo`：获取景点图片
-- `POST /api/rag/search`：检索旅行帖子（RAG，可选模块）
+- `POST /api/trip/plan`: generate a trip plan
+- `GET /api/trip/health`: check the Planner service
+- `GET /api/map/poi`: search POIs
+- `GET /api/map/weather`: query weather
+- `POST /api/map/route`: plan a route
+- `GET /api/poi/detail/{poi_id}`: get POI details
+- `GET /api/poi/photo`: get attraction images
+- `POST /api/rag/search`: retrieve travel posts (RAG, optional module)
 
 ## Optional Modules: RAG Retrieval & Critic Reflection Loop
 
@@ -264,40 +265,39 @@ OPENAI_BASE_URL=https://api.deepseek.com
 OPENAI_MODEL=deepseek-chat
 ```
 
-## 后训练资产
+## Post-training Assets
 
-`training/` 目录记录训练和评测主线。这里的做法是先由后端生成稳定、可审计的 `PlannerContext`，再让模型学习把它转换成合法的 `TripPlan JSON`。
+The `training/` directory records the training and evaluation mainline. The approach is to first have the backend produce a stable, auditable `PlannerContext`, then teach the model to convert it into valid `TripPlan JSON`.
 
-推荐入口：
+Recommended entry points:
 
-- [training/docs/教程/旅行助手后训练实战教程.md](training/docs/教程/旅行助手后训练实战教程.md)：从 PlannerContext 到 SFT、Best-of-N 和评测的实战教程
-- [training/README.md](training/README.md)：后训练目录说明
-- [training/STRUCTURE.md](training/STRUCTURE.md)：训练资产、数据、脚本、报告的目录边界
-- [training/docs/README.md](training/docs/README.md)：长期文档索引
-- [training/outputs/eval/README.md](training/outputs/eval/README.md)：评测输出与公开报告索引
-- [training/outputs/eval/reports/260512_bestofn_replay_extended_w10/README.md](training/outputs/eval/reports/260512_bestofn_replay_extended_w10/README.md)：2026-05-12 当前评测报告包
+- [training/docs/教程/旅行助手后训练实战教程.md](training/docs/教程/旅行助手后训练实战教程.md): hands-on tutorial from PlannerContext to SFT, Best-of-N, and evaluation
+- [training/README.md](training/README.md): post-training directory overview
+- [training/STRUCTURE.md](training/STRUCTURE.md): directory boundaries for training assets, data, scripts, and reports
+- [training/docs/README.md](training/docs/README.md): long-form documentation index
+- [training/outputs/eval/README.md](training/outputs/eval/README.md): evaluation outputs and public report index
+- [training/outputs/eval/reports/260512_bestofn_replay_extended_w10/README.md](training/outputs/eval/reports/260512_bestofn_replay_extended_w10/README.md): current evaluation report bundle (2026-05-12)
 
-当前仓库保留主线材料，不上传历史数据、私有交流记录、模型权重、checkpoint 和大规模运行产物。
+The current repo keeps the mainline material; historical data, private discussion logs, model weights, checkpoints, and large run artifacts are not uploaded.
 
-## 安全与忽略规则
+## Security & Ignore Rules
 
-不要提交真实密钥。`.gitignore` 已经排除了这些内容：
+Do not commit real secrets. `.gitignore` already excludes:
 
-- `backend/.env`、`frontend/.env`
-- Python / Node 本地环境
-- `node_modules/`、构建产物、日志
-- 训练输出、模型权重、checkpoint
-- 历史管线和废弃 prompt 消融
-- 私有作者交流、会话记忆和临时文档
+- `backend/.env`, `frontend/.env`
+- Python / Node local environments
+- `node_modules/`, build artifacts, logs
+- Training outputs, model weights, checkpoints
+- Historical pipelines and deprecated prompt ablations
+- Private author discussions, session memory, and scratch docs
 
-`.env.example` 会保留在仓库中，作为配置模板。
+`.env.example` is kept in the repo as a configuration template.
 
-## 许可证
+## License
 
 CC BY-NC-SA 4.0
 
-## 致谢
+## Acknowledgements
 
 - [HelloAgents](https://github.com/datawhalechina/Hello-Agents)
-- [高德地图开放平台](https://lbs.amap.com/)
-- [amap-mcp-server](https://github.com/sugarforever/amap-mcp-server)
+- [Amap (Gaode) Open Platform](https://lbs.amap.com/)
