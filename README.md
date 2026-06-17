@@ -161,6 +161,47 @@ npm run dev -- --host 0.0.0.0 --port 5173
 - `POST /api/map/route`：规划路线
 - `GET /api/poi/detail/{poi_id}`：获取 POI 详情
 - `GET /api/poi/photo`：获取景点图片
+- `POST /api/rag/search`：检索旅行帖子（RAG，可选模块）
+
+## Optional Modules: RAG Retrieval & Critic Reflection Loop
+
+Two optional modules were added on top of the core planner. Both are off unless
+their environment variables are set, so the default planner flow is unchanged.
+
+### RAG retrieval (`backend/app/rag/`)
+
+Hybrid retrieval over crawled travel posts. It combines a **dense** vector
+(Qwen3-Embedding-8B via ModelScope, 4096-d) with a **sparse** vector (jieba
+term-frequency whose IDF is computed server-side by Qdrant's `Modifier.IDF`),
+fuses them with Qdrant's RRF Query API, filters by a normalized **credibility**
+score (server-side), and applies a light rerank (similarity + credibility +
+freshness). Import posts, then search:
+
+```bash
+cd backend
+python scripts/rag_import.py --data ../out/rag/xhs_beijing.json
+python scripts/rag_search.py --query "北京免费逛的公园" --top-k 5
+```
+
+Required env (`backend/.env`): `MODELSCOPE_API_KEY`, `QDRANT_URL`,
+`QDRANT_API_KEY`, `RAG_COLLECTION`, `RAG_CREDIBILITY_THRESHOLD`. API:
+`POST /api/rag/search` with `{query, top_k, city}`.
+
+### Critic reflection loop (`backend/app/agents/critic.py`)
+
+An optional `generate -> critic -> revise` loop. The Critic is two-layer: a
+**deterministic** layer reuses the existing rerank metrics (budget overspend,
+hallucinated POIs, meal/attraction dedup) and produces structured, located
+violations; a **gated LLM** layer (only runs when the deterministic layer is
+clean) judges what rules cannot — geographic detours, pacing, persona fit (e.g.
+elders/children), and free-text requirements. The planner revises against the
+critique until it passes, hits `PLANNER_MAX_REVISE`, or stops on oscillation.
+Enable in `backend/.env`:
+
+```bash
+PLANNER_ENABLE_CRITIC=1
+PLANNER_MAX_REVISE=2
+```
 
 ## Troubleshooting
 
@@ -203,6 +244,25 @@ which is slower and not supported here.
 with `EmptyLLMResponseError` (logged with `preference_reason=planner_empty_response`)
 instead of the opaque "no JSON found" error, so this misconfiguration is obvious
 in the logs.
+
+### Planner LLM returns 401 / wrong provider after enabling RAG
+
+**Symptom:** the planner falls back to a template on every request; logs show
+`提供商: modelscope` and `401 ... api key ...0b34 is invalid` (that key is the
+ModelScope key, not your LLM key).
+
+**Root cause:** `HelloAgentsLLM()` auto-detects its provider from the
+environment and prefers `modelscope` once `MODELSCOPE_API_KEY` (added for RAG) is
+present, hijacking the planner LLM away from your `LLM_BASE_URL` (e.g. deepseek).
+
+**Fix:** pin the OpenAI-compatible provider explicitly in `backend/.env`:
+
+```bash
+LLM_PROVIDER=openai
+OPENAI_API_KEY=<your-llm-key>
+OPENAI_BASE_URL=https://api.deepseek.com
+OPENAI_MODEL=deepseek-chat
+```
 
 ## 后训练资产
 
