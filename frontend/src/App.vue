@@ -1,23 +1,41 @@
 <template>
-  <div id="app">
-    <a-layout class="app-layout">
-      <a-layout-header class="app-header">
-        <div class="app-brand">
-          <span class="brand-mark">H</span>
-          <span>HelloAgents 智能旅行助手</span>
-        </div>
-      </a-layout-header>
-      <a-layout-content class="app-content">
-        <router-view />
-      </a-layout-content>
-      <a-layout-footer class="app-footer">
-        HelloAgents 智能旅行助手 ©2026
-      </a-layout-footer>
-    </a-layout>
-  </div>
+  <a-config-provider :locale="antdLocale">
+    <div id="app">
+      <a-layout class="app-layout">
+        <a-layout-header class="app-header">
+          <div class="app-brand">
+            <span class="brand-mark">H</span>
+            <span>{{ t('app.brand') }}</span>
+          </div>
+          <a-segmented
+            :value="locale"
+            :options="langOptions"
+            class="lang-switch"
+            @change="onLangChange"
+          />
+        </a-layout-header>
+        <a-layout-content class="app-content">
+          <router-view />
+        </a-layout-content>
+        <a-layout-footer class="app-footer">
+          {{ t('app.footer') }}
+        </a-layout-footer>
+      </a-layout>
+    </div>
+  </a-config-provider>
 </template>
 
 <script setup lang="ts">
+import { antdLocale, locale, setLocale, t, type Locale } from '@/i18n'
+
+const langOptions = [
+  { label: '中文', value: 'zh' },
+  { label: 'EN', value: 'en' }
+]
+
+const onLangChange = (value: string | number) => {
+  setLocale(value as Locale)
+}
 </script>
 
 <style>
@@ -34,11 +52,16 @@
 .app-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   height: 64px;
   padding: 0 40px;
   border-bottom: 1px solid #e2e8f0;
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(12px);
+}
+
+.lang-switch {
+  font-weight: 600;
 }
 
 .app-brand {

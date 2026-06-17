@@ -4,20 +4,20 @@
       <div class="top-banner">
         <div class="top-banner-content">
           <div class="banner-kicker">AI Trip Planner</div>
-          <h1>创建一份可执行的旅行计划</h1>
-          <p>输入目的地、日期、同行人数和预算偏好，系统会结合工具快照生成每日行程。</p>
+          <h1>{{ t('home.bannerTitle') }}</h1>
+          <p>{{ t('home.bannerSubtitle') }}</p>
         </div>
         <div class="banner-summary">
           <div>
-            <span class="summary-label">行程</span>
-            <strong>{{ formData.travel_days }} 天</strong>
+            <span class="summary-label">{{ t('home.summaryTrip') }}</span>
+            <strong>{{ formData.travel_days }} {{ t('home.unitDays') }}</strong>
           </div>
           <div>
-            <span class="summary-label">同行</span>
-            <strong>{{ formData.party.total }} 人</strong>
+            <span class="summary-label">{{ t('home.summaryParty') }}</span>
+            <strong>{{ formData.party.total }} {{ t('home.unitPeople') }}</strong>
           </div>
           <div>
-            <span class="summary-label">协议</span>
+            <span class="summary-label">{{ t('home.summaryProtocol') }}</span>
             <strong>Planner</strong>
           </div>
         </div>
@@ -27,12 +27,12 @@
         <div class="form-card-header">
           <div>
             <div class="form-eyebrow">Plan Request</div>
-            <h2>行程需求</h2>
+            <h2>{{ t('home.cardTitle') }}</h2>
           </div>
           <div class="header-status">
-            <span>{{ formData.city || '未选择城市' }}</span>
-            <span>{{ formData.travel_days }} 天</span>
-            <span>{{ formData.party.total }} 人</span>
+            <span>{{ formData.city || t('home.noCity') }}</span>
+            <span>{{ formData.travel_days }} {{ t('home.unitDays') }}</span>
+            <span>{{ formData.party.total }} {{ t('home.unitPeople') }}</span>
           </div>
         </div>
 
@@ -44,48 +44,48 @@
           <div class="form-section">
             <div class="section-header">
               <EnvironmentOutlined />
-              <span class="section-title">目的地与日期</span>
+              <span class="section-title">{{ t('home.sectionWhere') }}</span>
             </div>
 
             <a-row :gutter="[20, 16]">
               <a-col :xs="{ span: 24 }" :lg="{ span: 10 }">
-                <a-form-item name="city" :rules="[{ required: true, message: '请输入目的地城市' }]">
+                <a-form-item name="city" :rules="[{ required: true, message: t('home.ruleCity') }]">
                   <template #label>
-                    <span class="form-label">目的地城市</span>
+                    <span class="form-label">{{ t('home.labelCity') }}</span>
                   </template>
                   <a-input
                     v-model:value="formData.city"
-                    placeholder="例如: 北京"
+                    :placeholder="t('home.placeholderCity')"
                     size="large"
                     class="custom-input"
                   />
                 </a-form-item>
               </a-col>
               <a-col :xs="{ span: 24 }" :sm="{ span: 12 }" :lg="{ span: 7 }">
-                <a-form-item name="start_date" :rules="[{ required: true, message: '请选择开始日期' }]">
+                <a-form-item name="start_date" :rules="[{ required: true, message: t('home.ruleStartDate') }]">
                   <template #label>
-                    <span class="form-label">开始日期</span>
+                    <span class="form-label">{{ t('home.labelStartDate') }}</span>
                   </template>
                   <a-date-picker
                     v-model:value="formData.start_date"
                     style="width: 100%"
                     size="large"
                     class="custom-input"
-                    placeholder="选择日期"
+                    :placeholder="t('home.placeholderDate')"
                   />
                 </a-form-item>
               </a-col>
               <a-col :xs="{ span: 24 }" :sm="{ span: 12 }" :lg="{ span: 7 }">
-                <a-form-item name="end_date" :rules="[{ required: true, message: '请选择结束日期' }]">
+                <a-form-item name="end_date" :rules="[{ required: true, message: t('home.ruleEndDate') }]">
                   <template #label>
-                    <span class="form-label">结束日期</span>
+                    <span class="form-label">{{ t('home.labelEndDate') }}</span>
                   </template>
                   <a-date-picker
                     v-model:value="formData.end_date"
                     style="width: 100%"
                     size="large"
                     class="custom-input"
-                    placeholder="选择日期"
+                    :placeholder="t('home.placeholderDate')"
                   />
                 </a-form-item>
               </a-col>
@@ -95,14 +95,14 @@
           <div class="form-section">
             <div class="section-header">
               <TeamOutlined />
-              <span class="section-title">同行与预算</span>
+              <span class="section-title">{{ t('home.sectionParty') }}</span>
             </div>
 
             <a-row :gutter="[20, 16]">
               <a-col :xs="{ span: 8 }" :md="{ span: 4 }">
                 <a-form-item name="adults">
                   <template #label>
-                    <span class="form-label">成人</span>
+                    <span class="form-label">{{ t('home.labelAdults') }}</span>
                   </template>
                   <a-input-number v-model:value="formData.party.adults" :min="0" :max="20" size="large" class="custom-input" style="width: 100%" />
                 </a-form-item>
@@ -110,7 +110,7 @@
               <a-col :xs="{ span: 8 }" :md="{ span: 4 }">
                 <a-form-item name="children">
                   <template #label>
-                    <span class="form-label">儿童</span>
+                    <span class="form-label">{{ t('home.labelChildren') }}</span>
                   </template>
                   <a-input-number v-model:value="formData.party.children" :min="0" :max="20" size="large" class="custom-input" style="width: 100%" />
                 </a-form-item>
@@ -118,7 +118,7 @@
               <a-col :xs="{ span: 8 }" :md="{ span: 4 }">
                 <a-form-item name="elders">
                   <template #label>
-                    <span class="form-label">老人</span>
+                    <span class="form-label">{{ t('home.labelElders') }}</span>
                   </template>
                   <a-input-number v-model:value="formData.party.elders" :min="0" :max="20" size="large" class="custom-input" style="width: 100%" />
                 </a-form-item>
@@ -126,7 +126,7 @@
               <a-col :xs="{ span: 24 }" :md="{ span: 4 }">
                 <a-form-item name="companion_type">
                   <template #label>
-                  <span class="form-label">同行类型</span>
+                  <span class="form-label">{{ t('home.labelCompanion') }}</span>
                 </template>
                 <a-select v-model:value="formData.party.companion_type" size="large" class="custom-select">
                     <a-select-option
@@ -142,7 +142,7 @@
               <a-col :xs="{ span: 24 }" :md="{ span: 4 }">
                 <a-form-item name="budget_amount">
                   <template #label>
-                    <span class="form-label">总预算</span>
+                    <span class="form-label">{{ t('home.labelBudget') }}</span>
                   </template>
                   <a-input-number
                     v-model:value="formData.budget_constraint.amount"
@@ -151,7 +151,7 @@
                     size="large"
                     class="custom-input"
                     style="width: 100%"
-                    placeholder="可不填"
+                    :placeholder="t('home.placeholderBudget')"
                   />
                   <!-- Strict (hard) budget: only meaningful once an amount is entered. -->
                   <a-checkbox
@@ -159,14 +159,14 @@
                     :disabled="formData.budget_constraint.amount === null || formData.budget_constraint.amount === undefined"
                     style="margin-top: 8px"
                   >
-                    不可超支
+                    {{ t('home.noOverspend') }}
                   </a-checkbox>
                 </a-form-item>
               </a-col>
               <a-col :xs="{ span: 24 }" :md="{ span: 4 }">
                 <a-form-item name="budget_level">
                   <template #label>
-                  <span class="form-label">预算档位</span>
+                  <span class="form-label">{{ t('home.labelBudgetLevel') }}</span>
                 </template>
                 <a-select v-model:value="formData.budget_constraint.budget_level" size="large" class="custom-select">
                     <a-select-option
@@ -185,14 +185,14 @@
           <div class="form-section">
             <div class="section-header">
               <CarOutlined />
-              <span class="section-title">偏好设置</span>
+              <span class="section-title">{{ t('home.sectionPrefs') }}</span>
             </div>
 
             <a-row :gutter="[20, 16]">
               <a-col :xs="{ span: 24 }" :lg="{ span: 8 }">
                 <a-form-item name="transportation">
                   <template #label>
-                  <span class="form-label">交通方式</span>
+                  <span class="form-label">{{ t('home.labelTransportation') }}</span>
                 </template>
                 <a-select v-model:value="formData.transportation" size="large" class="custom-select">
                     <a-select-option
@@ -208,7 +208,7 @@
               <a-col :xs="{ span: 24 }" :lg="{ span: 8 }">
                 <a-form-item name="accommodation">
                   <template #label>
-                  <span class="form-label">住宿偏好</span>
+                  <span class="form-label">{{ t('home.labelAccommodation') }}</span>
                 </template>
                 <a-select v-model:value="formData.accommodation" size="large" class="custom-select">
                     <a-select-option
@@ -224,7 +224,7 @@
               <a-col :xs="{ span: 24 }" :lg="{ span: 8 }">
                 <a-form-item name="preferences">
                   <template #label>
-                    <span class="form-label">旅行偏好</span>
+                    <span class="form-label">{{ t('home.labelPreferences') }}</span>
                   </template>
                   <div class="preference-tags">
                     <a-checkbox-group v-model:value="formData.preferences" class="custom-checkbox-group">
@@ -247,13 +247,13 @@
           <div class="form-section">
             <div class="section-header">
               <EditOutlined />
-              <span class="section-title">额外要求</span>
+              <span class="section-title">{{ t('home.sectionExtra') }}</span>
             </div>
 
             <a-form-item name="free_text_input">
               <a-textarea
                 v-model:value="formData.free_text_input"
-                placeholder="请输入您的额外要求，例如：想去看升旗、需要无障碍设施、对海鲜过敏等..."
+                :placeholder="t('home.placeholderExtra')"
                 :rows="3"
                 size="large"
                 class="custom-textarea"
@@ -272,10 +272,10 @@
             >
               <template v-if="!loading">
                 <RocketOutlined />
-                <span>开始规划行程</span>
+                <span>{{ t('home.submit') }}</span>
               </template>
               <template v-else>
-                <span>正在生成中...</span>
+                <span>{{ t('home.submitting') }}</span>
               </template>
             </a-button>
           </a-form-item>
@@ -316,6 +316,14 @@ import {
 import { streamTripPlan } from '@/services/api'
 import type { TripFormData } from '@/types'
 import type { Dayjs } from 'dayjs'
+import { t } from '@/i18n'
+import {
+  accommodationOptions,
+  budgetLevelOptions,
+  companionTypeOptions,
+  preferenceOptions,
+  transportationOptions
+} from '@/i18n/options'
 
 const router = useRouter()
 const loading = ref(false)
@@ -323,66 +331,6 @@ const loadingProgress = ref(0)
 const loadingStatus = ref('')
 // Hard budget toggle: when checked (and an amount is set) strictness becomes 'hard'.
 const strictBudget = ref(false)
-
-const companionTypeOptions = [
-  { label: '独行', value: 'solo' },
-  { label: '情侣', value: 'couple' },
-  { label: '朋友', value: 'friends' },
-  { label: '亲子', value: 'family_with_children' },
-  { label: '带长辈', value: 'family_with_elders' },
-  { label: '商务', value: 'business' },
-  { label: '其他', value: 'other' }
-]
-
-const budgetLevelOptions = [
-  { label: '节省', value: 'limited' },
-  { label: '标准', value: 'standard' },
-  { label: '舒适', value: 'comfortable' },
-  { label: '高端', value: 'premium' },
-  { label: '奢华', value: 'luxury' }
-]
-
-const transportationOptions = [
-  { label: '公共交通', value: '公共交通' },
-  { label: '地铁公交', value: '地铁公交' },
-  { label: '打车/网约车', value: '打车/网约车' },
-  { label: '自驾', value: '自驾' },
-  { label: '租车自驾', value: '租车自驾' },
-  { label: '包车/私人司机', value: '包车/私人司机' },
-  { label: '高铁+市内交通', value: '高铁+市内交通' },
-  { label: '飞机+市内交通', value: '飞机+市内交通' },
-  { label: '骑行/步行', value: '骑行/步行' },
-  { label: '混合交通', value: '混合交通' },
-  { label: '无障碍交通优先', value: '无障碍交通优先' }
-]
-
-const accommodationOptions = [
-  { label: '经济型酒店', value: '经济型酒店' },
-  { label: '舒适型酒店', value: '舒适型酒店' },
-  { label: '高端酒店', value: '高端酒店' },
-  { label: '豪华酒店', value: '豪华酒店' },
-  { label: '亲子酒店', value: '亲子酒店' },
-  { label: '民宿', value: '民宿' }
-]
-
-const preferenceOptions = [
-  { label: '历史文化', value: '历史文化', icon: '🏛️' },
-  { label: '自然风光', value: '自然风光', icon: '🏞️' },
-  { label: '美食探店', value: '美食', icon: '🍜' },
-  { label: '购物商圈', value: '购物', icon: '🛍️' },
-  { label: '艺术展览', value: '艺术', icon: '🎨' },
-  { label: '休闲放松', value: '休闲', icon: '☕' },
-  { label: '亲子友好', value: '亲子友好', icon: '🧸' },
-  { label: '老人友好', value: '老人友好', icon: '🧓' },
-  { label: '小众路线', value: '小众路线', icon: '🧭' },
-  { label: '夜游体验', value: '夜游', icon: '🌃' },
-  { label: '摄影打卡', value: '摄影打卡', icon: '📷' },
-  { label: '博物馆', value: '博物馆', icon: '🏺' },
-  { label: '城市漫步', value: '城市漫步', icon: '🚶' },
-  { label: '户外徒步', value: '户外徒步', icon: '🥾' },
-  { label: '主题乐园', value: '主题乐园', icon: '🎢' },
-  { label: '避开人群', value: '避开人群', icon: '🌿' }
-]
 
 type TripFormState = Omit<TripFormData, 'start_date' | 'end_date'> & {
   start_date: Dayjs | null
@@ -421,10 +369,10 @@ watch([() => formData.start_date, () => formData.end_date], ([start, end]) => {
     if (days > 0 && days <= 30) {
       formData.travel_days = days
     } else if (days > 30) {
-      message.warning('旅行天数不能超过30天')
+      message.warning(t('home.warnMaxDays'))
       formData.end_date = null
     } else {
-      message.warning('结束日期不能早于开始日期')
+      message.warning(t('home.warnDateOrder'))
       formData.end_date = null
     }
   }
@@ -472,18 +420,18 @@ function nextProgress(phase: string | undefined, attempt: number | undefined, cu
 
 const handleSubmit = async () => {
   if (!formData.start_date || !formData.end_date) {
-    message.error('请选择日期')
+    message.error(t('home.errPickDate'))
     return
   }
 
   if (formData.party.total <= 0) {
-    message.error('同行人数至少为1人')
+    message.error(t('home.errPartySize'))
     return
   }
 
   loading.value = true
   loadingProgress.value = 0
-  loadingStatus.value = 'Starting...'
+  loadingStatus.value = t('home.starting')
 
   try {
     const budgetAmount = formData.budget_constraint.amount
@@ -527,16 +475,16 @@ const handleSubmit = async () => {
     })
 
     loadingProgress.value = 100
-    loadingStatus.value = 'Done!'
+    loadingStatus.value = t('home.done')
 
     // Persist the plan and navigate to the result page.
     sessionStorage.setItem('tripPlan', JSON.stringify(plan))
-    message.success('Trip plan generated!')
+    message.success(t('home.successGenerated'))
     setTimeout(() => {
       router.push('/result')
     }, 500)
   } catch (error: any) {
-    message.error(error.message || 'Failed to generate trip plan, please retry')
+    message.error(error.message || t('home.errGenerate'))
   } finally {
     setTimeout(() => {
       loading.value = false
