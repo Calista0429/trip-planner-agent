@@ -55,6 +55,11 @@ class PlannerRuntime:
     collect_hotels: Optional[Callable[[TripRequest], dict[str, Any]]] = None
     empty_context: Optional[Callable[[TripRequest], dict[str, Any]]] = None
 
+    # Optional RAG collector (soft inspiration only). When set AND the fan-out is
+    # active, the graph adds a 4th parallel node that retrieves real travel posts
+    # into tool_snapshot["rag_notes"]. None (default) leaves planning unchanged.
+    collect_rag: Optional[Callable[[TripRequest], dict[str, Any]]] = None
+
     # Optional observability sinks. Persist one online-feedback failure row, and
     # log DPO preference candidates (rejected failures vs the chosen plan). Left
     # as None in tests so the graph stays side-effect free.
@@ -119,6 +124,13 @@ def build_default_runtime() -> PlannerRuntime:
 
         critic = CriticAgent(llm=fallback_llm)
 
+    collect_rag = None
+    if os.getenv("PLANNER_ENABLE_RAG", "0") == "1":
+        from ..rag.planner_bridge import build_rag_collector
+
+        # Returns None (and the graph wires no RAG node) if RAG can't initialize.
+        collect_rag = build_rag_collector()
+
     return PlannerRuntime(
         collect_context=builder.collect,
         build_query=lambda request, context: build_planner_query(
@@ -135,6 +147,7 @@ def build_default_runtime() -> PlannerRuntime:
         collect_weather=builder._collect_weather_snapshot,
         collect_hotels=builder._collect_hotel_snapshot,
         empty_context=builder.empty_context,
+        collect_rag=collect_rag,
         record_failure=lambda row: append_jsonl(PLANNER_FAILURE_LOG, row),
         record_preferences=log_preference_candidates,
         critic=critic,

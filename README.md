@@ -188,6 +188,16 @@ Required env (`backend/.env`): `MODELSCOPE_API_KEY`, `QDRANT_URL`,
 `QDRANT_API_KEY`, `RAG_COLLECTION`, `RAG_CREDIBILITY_THRESHOLD`. API:
 `POST /api/rag/search` with `{query, top_k, city}`.
 
+**Wiring RAG into the planner (optional, off by default).** Set
+`PLANNER_ENABLE_RAG=1` to add a 4th parallel fan-out node
+(`backend/app/rag/planner_bridge.py`) that retrieves posts into
+`tool_snapshot.rag_notes`. These are **soft inspiration only**: the Planner uses
+them for candidate prioritization, pacing, and seasonal/queue tips, but
+attractions, hotels and meals still come from the Amap candidate buckets — so
+grounding, the Critic's hallucinated-POI rule, and the map are unaffected. The
+node degrades gracefully (no notes) if RAG can't initialize, so planning never
+breaks. Tunable via `PLANNER_RAG_TOP_K` (default 5).
+
 ### Critic reflection loop (`backend/app/agents/critic.py`)
 
 An optional `generate -> critic -> revise` loop. The Critic is two-layer: a

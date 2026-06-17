@@ -36,6 +36,7 @@ PlannerContext:
 10. 所有价格和预算字段必须是最终整数数字字面量，不能写算式、括号、加减乘除、小数或解释；先在内部算完，再把结果写成整数。不要复用提示词或示例里的任何预算数字。
 11. 根据候选POI的district、address和location自行安排顺路组合，避免同一天明显跨区跳跃；如果单段路线较长，需要在description或transportation里解释。当前没有真实距离工具，hotel.distance必须写空字符串""，不要编造“距离景点2公里”“距主要景点约X公里”等伪精确距离。
 12. 如果 PlannerContext.planner_constraints.budget_fit_policy 存在，budget.total 应尽量落在 target_min_total 和 target_max_total 之间；不要只做最低价方案。若真实候选价格不足以完全用满预算，选择最接近预算的真实候选组合并在overall_suggestions中说明，不能抬高免费/低价景点门票，不能复用同一家餐厅凑预算。
+13. tool_snapshot.rag_notes（若存在）是从真实游记检索到的参考笔记，仅用于：在候选之间判断取舍优先级、给出动线与节奏建议、补充季节/排队/避坑等本地化提示，以及丰富 overall_suggestions 的措辞。严禁把仅出现在 rag_notes、却不在 *_pois 候选里的地点写成 attractions/hotel/meal；所有景点、酒店、餐厅仍必须来自对应的 *_pois 候选。rag_notes 可能为空或与本次行程无关，此时直接忽略，不要据此编造任何地点、价格或天气。
 """
     if request.free_text_input:
         query += f"\n额外要求: {request.free_text_input}"

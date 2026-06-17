@@ -25,6 +25,7 @@ def compact_for_planner(planner_context: Dict[str, Any]) -> Dict[str, Any]:
             "food_pois": compact_pois(snapshot.get("food_pois") or []),
             "food_query_groups": compact_food_query_groups(snapshot.get("food_query_groups") or []),
             "route_hints": compact_route_hints(snapshot.get("route_hints") or []),
+            "rag_notes": compact_rag_notes(snapshot.get("rag_notes") or []),
             "candidate_counts": {
                 "classic_pois": len(snapshot.get("classic_pois") or []),
                 "preference_pois": len(snapshot.get("preference_pois") or []),
@@ -34,10 +35,20 @@ def compact_for_planner(planner_context: Dict[str, Any]) -> Dict[str, Any]:
                 "food_pois": len(snapshot.get("food_pois") or []),
                 "food_query_groups": len(snapshot.get("food_query_groups") or []),
                 "route_hints": len(snapshot.get("route_hints") or []),
+                "rag_notes": len(snapshot.get("rag_notes") or []),
             },
         },
         "planner_constraints": planner_context.get("planner_constraints", {}),
     }
+
+
+def compact_rag_notes(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """RAG 参考笔记只保留模型需要的字段，控制 token 占用。"""
+    keys = ["title", "tags", "snippet", "credibility"]
+    return [
+        {key: item.get(key) for key in keys if item.get(key) not in (None, "", [])}
+        for item in rows
+    ]
 
 
 def compact_weather(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

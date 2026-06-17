@@ -295,12 +295,17 @@ def build_planner_graph(
         graph.add_node("finalize", finalize_node)
 
     if runtime.supports_fanout():
-        # Parallel fan-out: three collectors run concurrently, then merge.
+        # Parallel fan-out: the collectors run concurrently, then merge.
         graph.add_node("collect_attractions", _make_subcollector("attractions", runtime.collect_attractions))
         graph.add_node("collect_weather", _make_subcollector("weather", runtime.collect_weather))
         graph.add_node("collect_hotels", _make_subcollector("hotels", runtime.collect_hotels))
         graph.add_node("merge_context", merge_context)
-        for collector in ("collect_attractions", "collect_weather", "collect_hotels"):
+        collectors = ["collect_attractions", "collect_weather", "collect_hotels"]
+        # Optional 4th source: RAG travel-post notes (soft inspiration only).
+        if runtime.collect_rag is not None:
+            graph.add_node("collect_rag", _make_subcollector("rag", runtime.collect_rag))
+            collectors.append("collect_rag")
+        for collector in collectors:
             graph.add_edge(START, collector)
             graph.add_edge(collector, "merge_context")
         graph.add_edge("merge_context", "build_query")
