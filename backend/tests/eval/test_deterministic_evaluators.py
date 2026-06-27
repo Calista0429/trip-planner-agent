@@ -40,13 +40,21 @@ def test_plan_success_scores_zero_for_fallback():
     assert res["score"] == 0.0
 
 
-def test_budget_arithmetic_detects_mismatch():
+def test_budget_arithmetic_detects_consistency_and_mismatch():
     import deterministic
     run = _run()
     plan = run.outputs["plan"]
-    plan["budget"]["total"] = plan["budget"]["total"] + 999  # break the sum
-    res = deterministic.budget_arithmetic_ok(run, _example())
-    assert res["score"] == 0.0
+    plan["budget"] = {
+        "total_attractions": 20,
+        "total_hotels": 40,
+        "total_meals": 30,
+        "total_transportation": 10,
+        "total": 100,  # 20+40+30+10 == 100  -> consistent
+    }
+    assert deterministic.budget_arithmetic_ok(run, _example())["score"] == 1.0
+
+    plan["budget"]["total"] = plan["budget"]["total"] + 999  # 1099 != 100 -> inconsistent
+    assert deterministic.budget_arithmetic_ok(run, _example())["score"] == 0.0
 
 
 def test_grounding_rate_returns_float_between_0_and_1():

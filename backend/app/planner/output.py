@@ -6,7 +6,7 @@ import unicodedata
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from ..models.schemas import TripRequest, TripPlan, DayPlan, Attraction, Meal, WeatherInfo, Location, Budget
+from ..models.schemas import TripRequest, TripPlan, DayPlan, Attraction, Meal, WeatherInfo, Location
 from .dates import trip_date_strings, unknown_weather_row
 
 
@@ -567,5 +567,4 @@ def create_fallback_plan(request: TripRequest) -> TripPlan:
             for date_text in trip_date_strings(request)
         ],
         overall_suggestions=f"这是为您规划的{request.city}{request.travel_days}日游行程,建议提前查看各景点的开放时间和临近天气。",
-        budget=Budget(),
     )

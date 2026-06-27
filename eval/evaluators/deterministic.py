@@ -61,7 +61,8 @@ def budget_hard_ok(run: Any, example: Any) -> dict:
     m = _metrics(run, example)
     if m is None:
         return {"key": "budget_hard_ok", "score": 0.0, "comment": "no plan"}
-    return {"key": "budget_hard_ok", "score": 1.0 if m["budget_hard_constraint_ok"] else 0.0}
+    return {"key": "budget_hard_ok", "score": 1.0 if m["budget_hard_constraint_ok"] else 0.0,
+            "comment": f"hard_constraint_ok={m['budget_hard_constraint_ok']}"}
 
 
 def budget_arithmetic_ok(run: Any, example: Any) -> dict:
