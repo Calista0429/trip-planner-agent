@@ -7,7 +7,6 @@ import re
 from typing import Any, Callable
 
 from app.models.schemas import TripPlan, TripRequest
-from app.planner.output import extract_json_object  # noqa: F401 (available for callers)
 
 from deterministic import plan_from_run, request_from_example
 
