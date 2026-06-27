@@ -60,13 +60,16 @@ def make_llm_judge(invoke_fn: Callable[[list[dict]], str] | None = None):
             return _llm.invoke(messages)
 
     def llm_judge(run: Any, example: Any) -> dict:
-        plan = plan_from_run(run)
-        if plan is None:
-            return {"key": "llm_judge", "score": 0.0, "comment": "no plan"}
-        req = request_from_example(example)
-        prompt = build_judge_prompt(req, plan)
-        raw = invoke_fn([{"role": "user", "content": prompt}])
-        score, reason = parse_judge(raw)
-        return {"key": "llm_judge", "score": round(score / 5.0, 4), "comment": reason}
+        try:
+            plan = plan_from_run(run)
+            if plan is None:
+                return {"key": "llm_judge", "score": 0.0, "comment": "no plan"}
+            req = request_from_example(example)
+            prompt = build_judge_prompt(req, plan)
+            raw = invoke_fn([{"role": "user", "content": prompt}])
+            score, reason = parse_judge(raw)
+            return {"key": "llm_judge", "score": round(score / 5.0, 4), "comment": reason}
+        except Exception as exc:  # noqa: BLE001 - evaluators must never raise into evaluate()
+            return {"key": "llm_judge", "score": None, "comment": f"evaluator error: {exc}"}
 
     return llm_judge

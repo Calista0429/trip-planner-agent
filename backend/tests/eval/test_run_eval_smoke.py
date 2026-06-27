@@ -1,7 +1,6 @@
 # backend/tests/eval/test_run_eval_smoke.py
 import os
 import sys
-from types import SimpleNamespace
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "eval"))

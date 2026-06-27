@@ -8,11 +8,23 @@ Each evaluator takes (run, example) and returns {"key", "score", "comment"}.
 """
 from __future__ import annotations
 
+import functools
 from typing import Any
 
 from app.models.schemas import TripPlan, TripRequest
 from app.planner.pricing import FREE_ATTRACTION_KEYWORDS, MUSEUM_TYPE_KEYWORDS
 from app.planner.rerank import score_trip_plan_candidate
+
+
+def safe_evaluator(func):
+    """Wrap an evaluator so any exception becomes {key, score=None, comment} instead of raising into the experiment (spec §8)."""
+    @functools.wraps(func)
+    def _wrapped(run, example):
+        try:
+            return func(run, example)
+        except Exception as exc:  # noqa: BLE001 - evaluators must never raise into evaluate()
+            return {"key": func.__name__, "score": None, "comment": f"evaluator error: {exc}"}
+    return _wrapped
 
 
 def request_from_example(example: Any) -> TripRequest:
@@ -37,6 +49,7 @@ def _metrics(run: Any, example: Any) -> dict | None:
     return score_trip_plan_candidate(plan, request_from_example(example), context_from_run(run))
 
 
+@safe_evaluator
 def grounding_rate(run: Any, example: Any) -> dict:
     m = _metrics(run, example)
     if m is None:
@@ -47,6 +60,7 @@ def grounding_rate(run: Any, example: Any) -> dict:
             "comment": f"attr={rates[0]} hotel={rates[1]} meal={rates[2]}"}
 
 
+@safe_evaluator
 def budget_fit(run: Any, example: Any) -> dict:
     m = _metrics(run, example)
     if m is None:
@@ -58,6 +72,7 @@ def budget_fit(run: Any, example: Any) -> dict:
                        f"distance_ratio={m['budget_fit_distance_ratio']}"}
 
 
+@safe_evaluator
 def budget_hard_ok(run: Any, example: Any) -> dict:
     m = _metrics(run, example)
     if m is None:
@@ -66,6 +81,7 @@ def budget_hard_ok(run: Any, example: Any) -> dict:
             "comment": f"hard_constraint_ok={m['budget_hard_constraint_ok']}"}
 
 
+@safe_evaluator
 def budget_arithmetic_ok(run: Any, example: Any) -> dict:
     m = _metrics(run, example)
     if m is None:
@@ -73,6 +89,7 @@ def budget_arithmetic_ok(run: Any, example: Any) -> dict:
     return {"key": "budget_arithmetic_ok", "score": 1.0 if m["budget_arithmetic_consistent"] else 0.0}
 
 
+@safe_evaluator
 def plan_success(run: Any, example: Any) -> dict:
     status = (getattr(run, "outputs", None) or {}).get("status")
     return {"key": "plan_success", "score": 1.0 if status == "llm_success" else 0.0,
@@ -85,6 +102,7 @@ _PORK_DISH_KEYWORDS = ["猪", "排骨", "小面", "烧腊", "叉烧", "回锅肉
 _NO_PORK_TRIGGERS = ["不吃猪", "无猪", "忌猪", "清真", "no pork", "不要猪", "穆斯林"]
 
 
+@safe_evaluator
 def free_ticket_violations(run: Any, example: Any) -> dict:
     plan = plan_from_run(run)
     if plan is None:
@@ -104,6 +122,7 @@ def free_ticket_violations(run: Any, example: Any) -> dict:
             "comment": f"{violations}/{total} fabricated free-POI tickets: {', '.join(bad)}" if bad else "0 violations"}
 
 
+@safe_evaluator
 def hotel_nights_ok(run: Any, example: Any) -> dict:
     plan = plan_from_run(run)
     req = request_from_example(example)
@@ -124,6 +143,7 @@ def _wants_no_pork(req: TripRequest) -> bool:
     return any(trigger.lower() in text for trigger in _NO_PORK_TRIGGERS)
 
 
+@safe_evaluator
 def hard_constraint_ok(run: Any, example: Any) -> dict:
     plan = plan_from_run(run)
     req = request_from_example(example)

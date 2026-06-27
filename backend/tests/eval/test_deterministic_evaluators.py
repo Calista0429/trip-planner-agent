@@ -61,3 +61,24 @@ def test_grounding_rate_returns_float_between_0_and_1():
     import deterministic
     res = deterministic.grounding_rate(_run(), _example())
     assert 0.0 <= res["score"] <= 1.0
+
+
+def test_safe_evaluator_guard_returns_none_score_on_exception():
+    """spec §8: any evaluator exception → score=None + comment containing 'evaluator error'."""
+    import pytest
+    import deterministic
+    from app.models.schemas import TripPlan
+
+    bad_run = SimpleNamespace(outputs={"plan": {"not": "a valid plan"}, "planner_context": {}})
+    ex = _example()
+
+    # Confirm the UNWRAPPED path raises: TripPlan(**bad_dict) raises a ValidationError,
+    # which is what plan_from_run (called inside grounding_rate via _metrics) will hit.
+    with pytest.raises(Exception):
+        TripPlan(**{"not": "a valid plan"})
+
+    # The WRAPPED evaluator must catch that and return score=None instead of raising.
+    result = deterministic.grounding_rate(bad_run, ex)
+    assert result["key"] == "grounding_rate"
+    assert result["score"] is None
+    assert "evaluator error" in result["comment"]
