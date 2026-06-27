@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from ..observability.tracing import traceable
 from .pois import dedupe_pois, filter_pois, normalize_pois, rank_pois
 
 
@@ -62,6 +63,7 @@ class AmapPlannerClient:
         self.api_key = api_key
         self.cache_dir = self._resolve_cache_dir(cache_dir)
 
+    @traceable(name="amap_request", run_type="tool")
     def get(
         self,
         path: str,

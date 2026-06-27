@@ -23,6 +23,9 @@ loguru>=0.7.0
 # LangGraph orchestration (trip planning pipeline)
 langgraph>=1.2.0
 
+# LangSmith observability + evaluation
+langsmith>=0.1.0
+
 # MCP相关
 fastmcp>=2.0.0
 uv>=0.8.0

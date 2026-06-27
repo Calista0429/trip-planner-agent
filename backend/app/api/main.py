@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from ..config import get_settings, validate_config, print_config
+from ..observability.tracing import init_tracing
 from .routes import trip, poi, map as map_routes, rag as rag_routes
 
 # 获取配置
@@ -36,6 +37,7 @@ app.include_router(rag_routes.router, prefix="/api")
 @app.on_event("startup")
 async def startup_event():
     """应用启动事件"""
+    init_tracing()
     print("\n" + "="*60)
     print(f"🚀 {settings.app_name} v{settings.app_version}")
     print("="*60)

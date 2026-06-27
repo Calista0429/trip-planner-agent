@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Iterator
 
 from ..models.schemas import TripPlan, TripRequest
+from ..observability.tracing import attach_run_metadata, traceable
 from .graph import GRAPH_RECURSION_LIMIT, build_planner_graph, initial_state
 from .runtime import PlannerRuntime, build_default_runtime
 
@@ -40,15 +41,47 @@ def _get_compiled():
     return _compiled_graph
 
 
-def generate_trip_plan(request: TripRequest) -> PlanResult:
-    """Run the planning graph and adapt its final state for the API."""
+@traceable(name="planner_graph", run_type="chain")
+def _run_graph(request: TripRequest) -> dict:
     compiled = _get_compiled()
     final_state = compiled.invoke(
         initial_state(request), config={"recursion_limit": GRAPH_RECURSION_LIMIT}
     )
+    failures = final_state.get("failures", []) or []
+    attach_run_metadata(
+        {
+            "status": final_state.get("status", "unknown"),
+            "failure_count": len(failures),
+            "planner_failures": failures[:20],
+            "use_fallback_llm": bool(final_state.get("use_fallback_llm")),
+            "attempt": final_state.get("attempt"),
+            "city": request.city,
+            "party_total": request.party.total,
+            "budget_amount": request.budget_constraint.amount,
+            "budget_strictness": request.budget_constraint.strictness,
+        }
+    )
+    return final_state
+
+
+def generate_trip_plan(request: TripRequest) -> PlanResult:
+    """Run the planning graph and adapt its final state for the API."""
+    final_state = _run_graph(request)
     status = final_state.get("status", "unknown")
     message = _STATUS_MESSAGES.get(status, "旅行计划生成完成")
     return PlanResult(plan=final_state["final_plan"], status=status, message=message)
+
+
+def generate_trip_plan_detailed(request: TripRequest) -> dict:
+    """Eval-facing entry point: returns plan + planner_context + status + failures."""
+    final_state = _run_graph(request)
+    plan = final_state.get("final_plan")
+    return {
+        "plan": plan.model_dump(mode="json") if plan is not None else None,
+        "status": final_state.get("status", "unknown"),
+        "planner_context": final_state.get("planner_context") or {},
+        "failures": final_state.get("failures", []) or [],
+    }
 
 
 def reset_planner_graph() -> None:
