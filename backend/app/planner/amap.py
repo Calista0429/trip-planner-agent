@@ -269,7 +269,3 @@ class AmapPlannerClient:
             tmp_path.replace(path)
         except Exception as exc:
             print(f"⚠️  {label}缓存写入失败: {exc}")
-
-
-# Public alias used by tests and external imports.
-AmapClient = AmapPlannerClient
