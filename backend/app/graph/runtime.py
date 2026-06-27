@@ -14,6 +14,7 @@ from typing import Any, Callable, Optional, Protocol
 
 from ..agents.planner_query import build_planner_query
 from ..models.schemas import TripPlan, TripRequest
+from ..observability.tracing import wrap_client
 from ..planner.output import (
     enrich_trip_plan_poi_details,
     extract_json_object,
@@ -117,6 +118,13 @@ def build_default_runtime() -> PlannerRuntime:
     builder = PlannerContextBuilder(amap_key)
     primary_llm = get_planner_llm()
     fallback_llm = get_llm()
+    # Capture tokens/cost/latency in LangSmith without forking hello_agents:
+    # wrap the inner OpenAI client. No-op when tracing is disabled.
+    try:
+        primary_llm._client = wrap_client(primary_llm._client)
+        fallback_llm._client = wrap_client(fallback_llm._client)
+    except AttributeError:
+        pass
 
     critic = None
     if os.getenv("PLANNER_ENABLE_CRITIC", "0") == "1":
