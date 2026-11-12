@@ -14,7 +14,7 @@ An AI trip planner that turns a short request into a day-by-day itinerary, with 
 
 - [Why this project](#why-this-project)
 - [Architecture](#architecture)
-- [Use case: a couple plans their first trip to Hangzhou](#use-case-a-couple-plans-their-first-trip-to-hangzhou)
+- [Use case: a couple plans a 4-day trip to Hangzhou](#use-case-a-couple-plans-a-4-day-trip-to-hangzhou)
 - [Getting started](#getting-started)
 - [Troubleshooting](#troubleshooting)
 - [Project layout](#project-layout)
@@ -58,9 +58,9 @@ Most LLM trip planners let the model invent everything: attractions, opening hou
 
 **Key invariant:** graph nodes never raise to abort a run. The user always gets *a* plan.
 
-## Use case: a couple plans their first trip to Hangzhou
+## Use case: a couple plans a 4-day trip to Hangzhou
 
-> **Scenario.** Lena and Tom are visiting Hangzhou for three days in mid-November. They want a relaxed pace, a sunrise walk by West Lake, and an authentic local dinner. They don't eat seafood, and their budget is ¥4,000 for two.
+> **Scenario.** Lena and Tom are visiting Hangzhou for four days in mid-November. They want a relaxed pace, a sunrise walk by West Lake, and an authentic local dinner. They don't eat seafood, and their budget is ¥5,000 for two.
 >
 > All screenshots below come from a real run of this project. Nothing was mocked.
 
@@ -77,9 +77,9 @@ She fills in the request form:
 | Field | Value |
 | --- | --- |
 | Destination city | `杭州` (Hangzhou). Amap resolves Chinese city names most reliably; see [Troubleshooting](#troubleshooting). |
-| Dates | 2026-11-11 → 2026-11-13 |
+| Dates | 2026-11-11 → 2026-11-14 (4 days) |
 | Party | 2 adults, companion type **Couple** |
-| Budget | ¥4,000 total, level **Standard** |
+| Budget | ¥5,000 total, level **Standard** |
 | Transport / stay | Public transit, budget hotel |
 | Preferences | History & culture, Food & dining, Photography spots, City walks |
 | Notes | *"Our first trip to Hangzhou. We want a relaxed pace, a sunrise walk by West Lake, and at least one authentic Hangzhou dinner. No seafood, please. Please write the whole itinerary in English."* |
@@ -94,25 +94,32 @@ After she clicks **Start planning**, the progress bar follows the LangGraph node
 
 ### 4. Review the overview, budget, and full map
 
-About a minute later, the result page opens. The overview reflects every request: a sunrise walk on Day 1, local dinners, no seafood, and a rain warning for Day 2. The budget breakdown comes to **¥1,998**, well under the ¥4,000 cap. The full map plots all stays, sights, and meals, with a color for each day.
+About a minute later, the result page opens. The overview reflects every request: a sunrise walk by West Lake on the first morning, authentic local dinners, and no seafood, plus a tip to bring a jacket for November. The budget breakdown comes to **¥2,934**: attractions ¥140, hotels ¥750, meals ¥1,644, and transport ¥400. That is well under the ¥5,000 cap. The full map plots all stays, sights, and meals, with a color for each of the four days.
 
 <p align="center"><img src="docs/images/readme/04-result-top.png" alt="Result overview with budget and full map" width="820"></p>
 
 ### 5. Check each day's route
 
-Each day gets its own map, so Lena can check that the route doesn't zig-zag across the city.
+Each day gets its own map, so Lena can check that the route doesn't zig-zag across the city. The four days have different themes:
+
+| Day | Theme | Highlights |
+| --- | --- | --- |
+| 1 · Nov 11 | Arrival, easy lakeside walk | West Lake shoreline (西湖), Hubin Pedestrian Street (湖滨步行街) |
+| 2 · Nov 12 | Culture and history | Lingyin Temple (灵隐寺), Southern Song Deshou Palace Museum (德寿宫), Qinghefang (清河坊) |
+| 3 · Nov 13 | West Lake's quieter spots | Leifeng Pagoda (雷峰塔), Quyuan Fenghe (曲院风荷), Liulang Wenying (柳浪闻莺) |
+| 4 · Nov 14 | Grand Canal and departure | Gongchen Bridge historic block (拱宸桥), Hangzhou Museum (杭州博物馆) |
 
 <p align="center"><img src="docs/images/readme/08-daily-maps.png" alt="Daily route maps" width="820"></p>
 
 ### 6. Read the day-by-day itinerary
 
-Each day lists its attractions (with address, suggested duration, and tickets), a recommended hotel, and breakfast, lunch, and dinner. Every place is a real Amap POI, such as Bai Causeway (白堤), Leifeng Pagoda (雷峰塔), and Hefang Street (清河坊). Names and addresses keep their original Chinese so they can be searched on any map app.
+Each day lists its attractions (with address, suggested duration, and tickets), a recommended hotel, and breakfast, lunch, and dinner. Every place is a real Amap POI. Day 1, for example, pairs a slow walk along West Lake with lunch at Hangzhou Restaurant (杭州酒家), a classic local spot. Names and addresses keep their original Chinese so they can be searched on any map app.
 
 <p align="center"><img src="docs/images/readme/09-itinerary.png" alt="Day-by-day itinerary" width="640"></p>
 
 ### 7. Check the weather, then edit or export
 
-The trip falls inside Amap's forecast window, so the plan shows a real forecast: sunny on Day 1, light rain on Day 2. The overview already suggested an umbrella for that day. From here Lena can use **Edit itinerary** to adjust anything, or **Export** the plan to share with Tom.
+Amap forecasts only about four days ahead, so Days 1–3 show a real forecast: sunny on Day 1, light rain on Day 2, cloudy on Day 3. Day 4 falls just outside that window and shows "no forecast yet". The plan still covers it, and the forecast fills in if Lena regenerates closer to the date. From here Lena can use **Edit itinerary** to adjust anything, or **Export** the plan to share with Tom.
 
 <p align="center"><img src="docs/images/readme/10-weather.png" alt="Weather forecast" width="820"></p>
 
