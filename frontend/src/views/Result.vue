@@ -1,1986 +1,1283 @@
 <template>
-  <div class="result-container">
-    <!-- 页面头部 -->
-    <div class="page-header">
-      <a-button class="back-button" size="large" @click="goBack">
-        <ArrowLeftOutlined />
-        {{ t('result.back') }}
-      </a-button>
-      <a-space size="middle">
-        <a-button v-if="!editMode" @click="toggleEditMode" type="default">
-          <EditOutlined />
-          {{ t('result.edit') }}
-        </a-button>
-        <a-button v-else @click="saveChanges" type="primary">
-          <SaveOutlined />
-          {{ t('result.save') }}
-        </a-button>
-        <a-button v-if="editMode" @click="cancelEdit" type="default">
-          <CloseOutlined />
-          {{ t('result.cancel') }}
-        </a-button>
+  <section v-if="!tripPlan" class="shell empty-state" aria-labelledby="empty-title">
+    <h1 id="empty-title" class="serif">{{ t('result.emptyTitle') }}</h1>
+    <p>{{ t('result.emptyDesc') }}</p>
+    <router-link to="/" class="primary-link">{{ t('result.emptyAction') }}</router-link>
+  </section>
 
-        <!-- 导出按钮 -->
-        <a-dropdown v-if="!editMode">
-          <template #overlay>
-            <a-menu>
-              <a-menu-item key="image" @click="exportAsImage">
-                <PictureOutlined />
-                {{ t('result.exportImage') }}
-              </a-menu-item>
-              <a-menu-item key="pdf" @click="exportAsPDF">
-                <FilePdfOutlined />
-                {{ t('result.exportPdf') }}
-              </a-menu-item>
-            </a-menu>
-          </template>
-          <a-button type="default">
-            <DownloadOutlined />
-            {{ t('result.exportMenu') }} <DownOutlined />
-          </a-button>
-        </a-dropdown>
-      </a-space>
+  <section v-else class="shell result-page" aria-labelledby="result-title">
+    <div class="result-heading">
+      <div class="heading-text">
+        <p class="trip-caption">{{ t('result.caption') }} / {{ displayCity }}</p>
+        <h1 id="result-title" ref="titleEl" class="serif" tabindex="-1">{{ title }}</h1>
+        <p class="trip-meta">{{ metaLine }}</p>
+      </div>
+      <div class="heading-actions">
+        <template v-if="!editMode">
+          <button type="button" class="ghost-button" @click="editConditions">{{ t('result.editConditions') }}</button>
+          <button type="button" class="ghost-button" @click="toggleEditMode">{{ t('result.edit') }}</button>
+          <a-dropdown :trigger="['click']" placement="bottomRight">
+            <button type="button" class="ghost-button" :disabled="exporting" :aria-busy="exporting ? 'true' : 'false'">
+              {{ t('result.exportMenu') }}
+              <svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="m4 6 4 4 4-4" /></svg>
+            </button>
+            <template #overlay>
+              <a-menu @click="onExport">
+                <a-menu-item key="image">{{ t('result.exportImage') }}</a-menu-item>
+                <a-menu-item key="pdf">{{ t('result.exportPdf') }}</a-menu-item>
+                <a-menu-item key="note" disabled>{{ t('result.exportNote', { n: tripPlan.days.length }) }}</a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
+        </template>
+        <template v-else>
+          <button type="button" class="solid-button" @click="saveChanges">{{ t('result.save') }}</button>
+          <button type="button" class="ghost-button" @click="cancelEdit">{{ t('result.cancel') }}</button>
+        </template>
+      </div>
     </div>
 
-    <div v-if="tripPlan" class="content-wrapper">
-      <!-- 侧边导航 -->
-      <div class="side-nav">
-        <a-affix :offset-top="80">
-          <a-menu mode="inline" :selected-keys="[activeSection]" @click="scrollToSection">
-            <a-menu-item key="overview">
-              <OrderedListOutlined />
-              <span>{{ t('result.navOverview') }}</span>
-            </a-menu-item>
-            <a-menu-item key="budget" v-if="tripPlan.budget">
-              <WalletOutlined />
-              <span>{{ t('result.navBudget') }}</span>
-            </a-menu-item>
-            <a-menu-item key="map">
-              <EnvironmentOutlined />
-              <span>{{ t('result.navMap') }}</span>
-            </a-menu-item>
-            <a-menu-item key="daily-maps">
-              <EnvironmentOutlined />
-              <span>{{ t('result.navDailyMaps') }}</span>
-            </a-menu-item>
-            <a-sub-menu key="days" :title="t('result.navDays')">
-              <a-menu-item v-for="(day, index) in tripPlan.days" :key="`day-${index}`">
-                {{ t('result.day', { n: day.day_index + 1 }) }}
-              </a-menu-item>
-            </a-sub-menu>
-            <a-menu-item key="weather" v-if="tripPlan.weather_info && tripPlan.weather_info.length > 0">
-              <CloudOutlined />
-              <span>{{ t('result.navWeather') }}</span>
-            </a-menu-item>
-          </a-menu>
-        </a-affix>
-      </div>
+    <div v-if="planNotice" class="plan-notice" role="status">
+      <strong v-if="isFallback">{{ t('result.fallbackTitle') }}</strong>
+      <p>{{ planNotice }}</p>
+    </div>
 
-      <!-- 主内容区 -->
-      <div class="main-content">
-        <!-- 顶部信息区:左侧概览+预算,右侧地图 -->
-        <div class="top-info-section">
-          <!-- 左侧:行程概览和预算明细 -->
-          <div class="left-info">
-            <!-- 行程概览 -->
-            <a-card id="overview" :title="t('result.tripPlanTitle', { city: tripPlan.city })" :bordered="false" class="overview-card">
-              <div class="overview-content">
-                <div class="info-item">
-                  <span class="info-label">{{ t('result.dateLabel') }}</span>
-                  <span class="info-value">{{ t('result.dateRange', { start: tripPlan.start_date, end: tripPlan.end_date }) }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">{{ t('result.overallSuggestions') }}</span>
-                  <span class="info-value">{{ tripPlan.overall_suggestions }}</span>
-                </div>
-              </div>
-            </a-card>
+    <p v-if="tripPlan.overall_suggestions" class="suggestions">
+      <span class="suggestions-label">{{ t('result.suggestions') }}</span>
+      {{ tripPlan.overall_suggestions }}
+    </p>
 
-            <!-- 预算明细 -->
-            <a-card id="budget" v-if="tripPlan.budget" :title="t('result.budgetTitle')" :bordered="false" class="budget-card">
-              <div class="budget-grid">
-                <div class="budget-item">
-                  <div class="budget-label">{{ t('result.budgetAttractions') }}</div>
-                  <div class="budget-value">¥{{ tripPlan.budget.total_attractions }}</div>
-                </div>
-                <div class="budget-item">
-                  <div class="budget-label">{{ t('result.budgetHotels') }}</div>
-                  <div class="budget-value">¥{{ tripPlan.budget.total_hotels }}</div>
-                </div>
-                <div class="budget-item">
-                  <div class="budget-label">{{ t('result.budgetMeals') }}</div>
-                  <div class="budget-value">¥{{ tripPlan.budget.total_meals }}</div>
-                </div>
-                <div class="budget-item">
-                  <div class="budget-label">{{ t('result.budgetTransportation') }}</div>
-                  <div class="budget-value">¥{{ tripPlan.budget.total_transportation }}</div>
-                </div>
-              </div>
-              <div class="budget-total">
-                <span class="total-label">{{ t('result.budgetTotal') }}</span>
-                <span class="total-value">¥{{ tripPlan.budget.total }}</span>
-              </div>
-            </a-card>
-          </div>
+    <WeatherStrip :plan="tripPlan" :selected="dayIndex" @select="index => setDay(index, false)" />
 
-          <!-- 右侧:地图 -->
-          <div class="right-map">
-            <a-card id="map" :title="t('result.mapTitle')" :bordered="false" class="map-card">
-              <div class="map-shell">
-                <div id="amap-container" class="amap-container"></div>
-                <div class="map-legend">
-                  <span><i class="legend-dot legend-hotel"></i>{{ t('result.legendStay') }}</span>
-                  <span><i class="legend-dot legend-attraction"></i>{{ t('result.legendSights') }}</span>
-                  <span><i class="legend-dot legend-meal"></i>{{ t('result.legendFood') }}</span>
-                </div>
-              </div>
-            </a-card>
-          </div>
-        </div>
+    <div class="result-layout">
+      <div class="itinerary">
+        <DayNavigation :days="tripPlan.days" :current="dayIndex" @change="index => setDay(index, true)" />
 
-        <!-- 每日地图 -->
-        <a-card id="daily-maps" :title="t('result.dailyMapsTitle')" :bordered="false" class="daily-maps-card">
-          <div class="daily-map-grid">
-            <div
-              v-for="(day, index) in tripPlan.days"
-              :key="`daily-map-${index}`"
-              class="daily-map-panel"
-            >
-              <div class="daily-map-heading">
-                <div>
-                  <div class="daily-map-title">{{ t('result.day', { n: day.day_index + 1 }) }}</div>
-                  <div class="daily-map-date">{{ day.date }}</div>
-                </div>
-                <div class="daily-map-count">
-                  {{ t('result.locationsCount', { n: getDayMapPoints(index).length }) }}
-                </div>
-              </div>
-              <div class="map-shell daily-map-shell">
-                <div
-                  :id="getDailyMapContainerId(index)"
-                  class="amap-container daily-amap-container"
-                ></div>
-                <div class="map-legend compact">
-                  <span><i class="legend-dot legend-hotel"></i>{{ t('result.legendStay') }}</span>
-                  <span><i class="legend-dot legend-attraction"></i>{{ t('result.legendSights') }}</span>
-                  <span><i class="legend-dot legend-meal"></i>{{ t('result.legendFood') }}</span>
-                </div>
-                <div v-if="!hasDailyMapLocations(index)" class="map-empty-state">
-                  {{ t('result.noCoordinates') }}
-                </div>
-              </div>
-            </div>
-          </div>
-        </a-card>
-
-        <!-- 每日行程:可折叠 -->
-        <a-card :title="t('result.dailyItinerary')" :bordered="false" class="days-card">
-          <a-collapse v-model:activeKey="activeDays" accordion>
-            <a-collapse-panel
-              v-for="(day, index) in tripPlan.days"
-              :key="index"
-              :id="`day-${index}`"
-            >
-              <template #header>
-                <div class="day-header">
-                  <span class="day-title">{{ t('result.day', { n: day.day_index + 1 }) }}</span>
-                  <span class="day-date">{{ day.date }}</span>
-                </div>
-              </template>
-
-              <!-- 行程基本信息 -->
-              <div class="day-info">
-                <div class="info-row">
-                  <span class="label">{{ t('result.descLabel') }}</span>
-                  <span class="value">{{ day.description }}</span>
-                </div>
-                <div class="info-row">
-                  <span class="label">{{ t('result.transportLabel') }}</span>
-                  <span class="value">{{ day.transportation }}</span>
-                </div>
-                <div class="info-row">
-                  <span class="label">{{ t('result.stayLabel') }}</span>
-                  <span class="value">{{ day.accommodation }}</span>
-                </div>
-              </div>
-
-              <!-- 景点安排 -->
-              <a-divider orientation="left">{{ t('result.attractionsSection') }}</a-divider>
-              <a-list
-                :data-source="day.attractions"
-                :grid="{ gutter: 16, column: 2 }"
-              >
-                <template #renderItem="{ item, index }">
-                  <a-list-item>
-                    <a-card :title="item.name" size="small" class="attraction-card">
-                      <!-- 编辑模式下的操作按钮 -->
-                      <template #extra v-if="editMode">
-                        <a-space>
-                          <a-button
-                            size="small"
-                            @click="moveAttraction(day.day_index, index, 'up')"
-                            :disabled="index === 0"
-                          >
-                            ↑
-                          </a-button>
-                          <a-button
-                            size="small"
-                            @click="moveAttraction(day.day_index, index, 'down')"
-                            :disabled="index === day.attractions.length - 1"
-                          >
-                            ↓
-                          </a-button>
-                          <a-button
-                            size="small"
-                            danger
-                            @click="deleteAttraction(day.day_index, index)"
-                          >
-                            🗑️
-                          </a-button>
-                        </a-space>
-                      </template>
-
-                      <!-- 景点图片 -->
-                      <div class="attraction-image-wrapper">
-                        <img
-                          :src="getAttractionImage(item.name, index)"
-                          :alt="item.name"
-                          class="attraction-image"
-                          @error="handleImageError"
-                        />
-                        <div class="attraction-badge">
-                          <span class="badge-number">{{ index + 1 }}</span>
-                        </div>
-                        <div v-if="item.ticket_price" class="price-tag">
-                          ¥{{ item.ticket_price }}
-                        </div>
-                      </div>
-
-                      <!-- 编辑模式下可编辑的字段 -->
-                      <div v-if="editMode">
-                        <p><strong>{{ t('result.addrEditLabel') }}</strong></p>
-                        <a-input v-model:value="item.address" size="small" style="margin-bottom: 8px" />
-
-                        <p><strong>{{ t('result.durationEditLabel') }}</strong></p>
-                        <a-input-number v-model:value="item.visit_duration" :min="10" :max="480" size="small" style="width: 100%; margin-bottom: 8px" />
-
-                        <p><strong>{{ t('result.descEditLabel') }}</strong></p>
-                        <a-textarea v-model:value="item.description" :rows="2" size="small" style="margin-bottom: 8px" />
-                      </div>
-
-                      <!-- 查看模式 -->
-                      <div v-else>
-                        <p><strong>{{ t('result.addr') }}:</strong> {{ item.address }}</p>
-                        <p><strong>{{ t('result.duration') }}:</strong> {{ t('result.durationMin', { n: item.visit_duration }) }}</p>
-                        <p><strong>{{ t('result.descField') }}:</strong> {{ item.description }}</p>
-                        <p v-if="item.rating"><strong>{{ t('result.rating') }}:</strong> {{ item.rating }}⭐</p>
-                      </div>
-                    </a-card>
-                  </a-list-item>
-                </template>
-              </a-list>
-
-              <!-- 酒店推荐 -->
-              <a-divider v-if="day.hotel" orientation="left">{{ t('result.recommendedStay') }}</a-divider>
-              <a-card v-if="day.hotel" size="small" class="hotel-card">
-                <template #title>
-                  <span class="hotel-title">{{ day.hotel.name }}</span>
-                </template>
-                <a-descriptions :column="2" size="small">
-                  <a-descriptions-item :label="t('result.addr')">{{ day.hotel.address }}</a-descriptions-item>
-                  <a-descriptions-item :label="t('result.hotelType')">{{ day.hotel.type }}</a-descriptions-item>
-                  <a-descriptions-item :label="t('result.hotelPriceRange')">{{ day.hotel.price_range }}</a-descriptions-item>
-                  <a-descriptions-item :label="t('result.rating')">{{ day.hotel.rating }}⭐</a-descriptions-item>
-                  <a-descriptions-item :label="t('result.hotelDistance')" :span="2">{{ day.hotel.distance }}</a-descriptions-item>
-                </a-descriptions>
-              </a-card>
-
-              <!-- 餐饮安排 -->
-              <a-divider orientation="left">{{ t('result.mealsSection') }}</a-divider>
-              <a-descriptions :column="1" bordered size="small">
-                <a-descriptions-item
-                  v-for="meal in day.meals"
-                  :key="meal.type"
-                  :label="getMealLabel(meal.type)"
-                >
-                  {{ meal.name }}
-                  <span v-if="meal.description"> - {{ meal.description }}</span>
-                </a-descriptions-item>
-              </a-descriptions>
-            </a-collapse-panel>
-          </a-collapse>
-        </a-card>
-
-        <a-card id="weather" v-if="tripPlan.weather_info && tripPlan.weather_info.length > 0" :title="t('result.weatherTitle')" style="margin-top: 20px" :bordered="false">
-        <a-list
-          :data-source="tripPlan.weather_info"
-          :grid="{ gutter: 16, column: 3 }"
+        <div
+          v-if="currentDay"
+          id="day-panel"
+          ref="dayPanel"
+          class="day-panel"
+          role="region"
+          :aria-label="t('result.dayPanel', { n: dayIndex + 1 })"
+          tabindex="-1"
         >
-          <template #renderItem="{ item }">
-            <a-list-item>
-              <a-card size="small" class="weather-card" :class="getWeatherCardClass(item.day_weather, item.night_weather)">
-                <div class="weather-date">{{ item.date }}</div>
-                <div class="weather-info-row">
-                  <span class="weather-icon">{{ getWeatherIcon(item.day_weather, 'day') }}</span>
-                  <div>
-                    <div class="weather-label">{{ t('result.weatherDay') }}</div>
-                    <div class="weather-value">{{ item.day_weather }} {{ item.day_temp }}°C</div>
+          <div class="day-intro">
+            <h2 class="serif section-heading">
+              <SectionIcon kind="route" />
+              <span>{{ dayHeading }}</span>
+            </h2>
+            <p v-if="currentDay.description">{{ currentDay.description }}</p>
+            <p v-if="currentDay.transportation" class="day-transport">
+              {{ t('result.transport') }} · {{ currentDay.transportation }}
+            </p>
+          </div>
+
+          <p v-if="editMode" class="editing-hint" role="status">{{ t('result.editingHint') }}</p>
+
+          <!-- Route & sights -->
+          <section class="poi-section first" aria-labelledby="route-heading">
+            <h2 id="route-heading" class="sr-only">{{ t('result.routeHeading') }}</h2>
+            <ol v-if="currentDay.attractions?.length" class="timeline">
+              <li
+                v-for="(item, index) in currentDay.attractions"
+                :key="`${dayIndex}-${index}-${item.name}`"
+                class="stop"
+                :class="{ selected: selectedKey === attractionKey(dayIndex, index) }"
+                :data-key="attractionKey(dayIndex, index)"
+              >
+                <div class="stop-index" aria-hidden="true">{{ index + 1 }}</div>
+                <div class="stop-body">
+                  <div class="stop-media">
+                    <template v-if="photoFor(item) && !failedPhotos.has(photoFor(item)!.url)">
+                      <img
+                        :src="photoFor(item)!.url"
+                        :alt="photoFor(item)!.stock ? t('result.stockPhotoAlt', { name: item.name }) : item.name"
+                        loading="lazy"
+                        decoding="async"
+                        @error="failedPhotos.add(photoFor(item)!.url)"
+                      />
+                      <span v-if="photoFor(item)!.stock" class="stock-tag">{{ t('result.stockPhoto') }}</span>
+                    </template>
+                    <div v-else class="photo-placeholder">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false">
+                        <rect x="3" y="5" width="18" height="14" rx="1" />
+                        <path d="m3 16 5-5 4 4 3-3 6 6" />
+                        <circle cx="16" cy="9" r="1.5" />
+                      </svg>
+                      <span>{{ t('result.photoMissing') }}</span>
+                    </div>
+                  </div>
+                  <div class="stop-text">
+                    <h3>{{ item.name }}</h3>
+                    <p v-if="attractionFacts(item)" class="facts">{{ attractionFacts(item) }}</p>
+
+                    <template v-if="!editMode">
+                      <p v-if="item.address" class="address">{{ item.address }}</p>
+                      <p v-if="item.description" class="summary">{{ item.description }}</p>
+                    </template>
+                    <div v-else class="edit-fields">
+                      <label>
+                        <span>{{ t('result.editAddress') }}</span>
+                        <a-input v-model:value="item.address" size="small" />
+                      </label>
+                      <label>
+                        <span>{{ t('result.editDuration') }}</span>
+                        <a-input-number v-model:value="item.visit_duration" :min="10" :max="480" size="small" style="width: 100%" />
+                      </label>
+                      <label>
+                        <span>{{ t('result.editDescription') }}</span>
+                        <a-textarea v-model:value="item.description" :auto-size="{ minRows: 2, maxRows: 5 }" size="small" />
+                      </label>
+                      <div class="edit-controls">
+                        <button type="button" :disabled="index === 0" @click="moveAttraction(index, 'up')">
+                          ↑ {{ t('result.moveUp') }}
+                        </button>
+                        <button type="button" :disabled="index === currentDay.attractions.length - 1" @click="moveAttraction(index, 'down')">
+                          ↓ {{ t('result.moveDown') }}
+                        </button>
+                        <button type="button" class="danger" @click="deleteAttraction(index)">{{ t('result.remove') }}</button>
+                      </div>
+                    </div>
+
+                    <MapLink
+                      v-if="!editMode"
+                      :point-key="attractionKey(dayIndex, index)"
+                      :mapped="mappedKeys.has(attractionKey(dayIndex, index))"
+                      :selected="selectedKey === attractionKey(dayIndex, index)"
+                      @view="viewOnMap"
+                    />
                   </div>
                 </div>
-                <div class="weather-info-row">
-                  <span class="weather-icon">{{ getWeatherIcon(item.night_weather, 'night') }}</span>
-                  <div>
-                    <div class="weather-label">{{ t('result.weatherNight') }}</div>
-                    <div class="weather-value">{{ item.night_weather }} {{ item.night_temp }}°C</div>
+              </li>
+            </ol>
+            <p v-else class="poi-empty">{{ t('result.noAttractions') }}</p>
+          </section>
+
+          <!-- Hotel -->
+          <section class="poi-section" aria-labelledby="hotel-heading">
+            <h2 id="hotel-heading" class="serif section-heading">
+              <SectionIcon kind="hotel" />
+              <span>{{ t('result.hotelHeading') }}</span>
+            </h2>
+            <article
+              v-if="displayHotel"
+              class="poi-card"
+              :class="{ selected: selectedKey === hotelKey(dayIndex) }"
+              :data-key="hotelKey(dayIndex)"
+            >
+              <div class="poi-topline">
+                <h3 class="poi-title">{{ displayHotel.hotel.name }}</h3>
+                <span v-if="displayHotel.isCarriedOver" class="poi-badge">{{ t('result.carriedOver') }}</span>
+              </div>
+              <p v-if="displayHotel.hotel.address" class="address">{{ displayHotel.hotel.address }}</p>
+              <dl v-if="hotelFacts.length" class="poi-facts">
+                <div v-for="fact in hotelFacts" :key="fact.label">
+                  <dt>{{ fact.label }}</dt>
+                  <dd>{{ fact.value }}</dd>
+                </div>
+              </dl>
+              <p v-if="displayHotel.isCarriedOver" class="summary">{{ t('result.carriedOverNote') }}</p>
+              <MapLink
+                :point-key="hotelKey(dayIndex)"
+                :mapped="mappedKeys.has(hotelKey(dayIndex))"
+                :selected="selectedKey === hotelKey(dayIndex)"
+                @view="viewOnMap"
+              />
+            </article>
+            <p v-else class="poi-empty">{{ t('result.noHotel') }}</p>
+          </section>
+
+          <!-- Meals -->
+          <section class="poi-section" aria-labelledby="meal-heading">
+            <h2 id="meal-heading" class="serif section-heading">
+              <SectionIcon kind="meal" />
+              <span>{{ t('result.mealHeading') }}</span>
+            </h2>
+            <ul v-if="currentDay.meals?.length" class="meal-list">
+              <li
+                v-for="(meal, index) in currentDay.meals"
+                :key="`${dayIndex}-m${index}-${meal.name}`"
+                class="meal-row"
+                :class="{ selected: selectedKey === mealKey(dayIndex, index) }"
+                :data-key="mealKey(dayIndex, index)"
+              >
+                <span class="meal-type">{{ mealLabel(meal.type) }}</span>
+                <div class="meal-body">
+                  <div class="poi-topline">
+                    <h3 class="poi-title">{{ meal.name || '—' }}</h3>
+                    <span v-if="isAmount(meal.estimated_cost)" class="poi-cost">
+                      {{ t('result.mealCost', { v: money(meal.estimated_cost) }) }}
+                    </span>
                   </div>
+                  <p v-if="meal.description" class="summary">{{ meal.description }}</p>
+                  <p v-if="meal.address" class="address">{{ meal.address }}</p>
+                  <p v-if="isLodgingBreakfastMeal(meal.type, meal.name)" class="map-note">{{ t('result.lodgingBreakfast') }}</p>
+                  <MapLink
+                    v-else
+                    :point-key="mealKey(dayIndex, index)"
+                    :mapped="mappedKeys.has(mealKey(dayIndex, index))"
+                    :selected="selectedKey === mealKey(dayIndex, index)"
+                    @view="viewOnMap"
+                  />
                 </div>
-                <div class="weather-wind">
-                  💨 {{ item.wind_direction }} {{ item.wind_power }}
-                </div>
-              </a-card>
-            </a-list-item>
-          </template>
-        </a-list>
-        </a-card>
+              </li>
+            </ul>
+            <p v-else class="poi-empty">{{ t('result.noMeals') }}</p>
+          </section>
+        </div>
       </div>
+
+      <aside class="trip-sidebar" :aria-label="`${t('map.heading')} / ${t('result.budgetHeading')}`">
+        <div ref="mapWrap">
+          <TripMap
+            ref="tripMap"
+            :plan="tripPlan"
+            :day-index="dayIndex"
+            :selected-key="selectedKey"
+            :revision="mapRevision"
+            @select="onMapSelect"
+          />
+        </div>
+        <BudgetPanel :budget="tripPlan.budget" :cap="budgetCap" />
+      </aside>
     </div>
 
-    <a-empty v-else :description="t('result.emptyTitle')">
-      <template #image>
-        <div style="font-size: 80px;">🗺️</div>
-      </template>
-      <template #description>
-        <span style="color: #999;">{{ t('result.emptyDesc') }}</span>
-      </template>
-      <a-button type="primary" @click="goBack">{{ t('result.emptyAction') }}</a-button>
-    </a-empty>
-
-    <!-- 回到顶部按钮 -->
-    <a-back-top :visibility-height="300">
-      <div class="back-top-button">
-        ↑
-      </div>
-    </a-back-top>
-  </div>
+    <ExportSheet
+      v-if="exporting"
+      ref="exportSheet"
+      :plan="tripPlan"
+      :title="title"
+      :meta="metaLine"
+      :notice="planNotice"
+      :cap="budgetCap"
+      :map-snapshot="mapSnapshot"
+    />
+  </section>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import {
-  ArrowLeftOutlined,
-  CloseOutlined,
-  CloudOutlined,
-  DownloadOutlined,
-  DownOutlined,
-  EditOutlined,
-  EnvironmentOutlined,
-  FilePdfOutlined,
-  OrderedListOutlined,
-  PictureOutlined,
-  SaveOutlined,
-  WalletOutlined
-} from '@ant-design/icons-vue'
-import AMapLoader from '@amap/amap-jsapi-loader'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
-import type { TripPlan } from '@/types'
+import type { Attraction, TripFormData, TripPlan } from '@/types'
 import { API_BASE_URL } from '@/services/api'
-import { t } from '@/i18n'
+import { isFallbackStatus, loadMeta, loadPlan, loadRequest, savePlan, type TripPlanMeta } from '@/services/tripSession'
+import { locale, t } from '@/i18n'
+import { isLodgingBreakfastMeal, isValidLocation, normalizeLocation } from '@/utils/geo'
+import { attractionKey, buildDayPoints, hotelKey, mealKey } from '@/utils/mapPoints'
+import { findCity } from '@/data/regions'
+import { formatMoney, getDisplayHotel, isAmount, splitDate } from '@/utils/trip'
+import BudgetPanel from '@/components/result/BudgetPanel.vue'
+import DayNavigation from '@/components/result/DayNavigation.vue'
+import ExportSheet from '@/components/result/ExportSheet.vue'
+import MapLink from '@/components/result/MapLink.vue'
+import SectionIcon from '@/components/result/SectionIcon.vue'
+import TripMap from '@/components/result/TripMap.vue'
+import WeatherStrip from '@/components/result/WeatherStrip.vue'
 
+const route = useRoute()
 const router = useRouter()
-const tripPlan = ref<TripPlan | null>(null)
+
+const tripPlan = ref<TripPlan | null>(loadPlan())
+const meta = ref<TripPlanMeta | null>(loadMeta())
+const request = ref<TripFormData | null>(loadRequest())
+
 const editMode = ref(false)
 const originalPlan = ref<TripPlan | null>(null)
+const selectedKey = ref<string | null>(null)
+const mapRevision = ref(0)
+const exporting = ref(false)
+const mapSnapshot = ref<string | null>(null)
 const attractionPhotos = ref<Record<string, string>>({})
-const activeSection = ref('overview')
-const activeDays = ref<number[]>([0]) // 默认展开第一天
-let map: any = null
-let AMapApi: any = null
-const dailyMaps = new Map<number, any>()
+const failedPhotos = reactive(new Set<string>())
 
-type MapPointType = 'hotel' | 'attraction' | 'meal'
+const titleEl = ref<HTMLElement | null>(null)
+const dayPanel = ref<HTMLElement | null>(null)
+const mapWrap = ref<HTMLElement | null>(null)
+const tripMap = ref<InstanceType<typeof TripMap> | null>(null)
 
-interface MapPoint {
-  type: MapPointType
-  name: string
-  address?: string
-  description?: string
-  location: {
-    longitude: number
-    latitude: number
-  }
-  dayIndex: number
-  markerText: string
-  order: number
-  routeOrder: number
-  meta?: string
-}
+const money = (value: number) => formatMoney(value, locale.value)
 
-onMounted(async () => {
-  const data = sessionStorage.getItem('tripPlan')
-  if (data) {
-    tripPlan.value = JSON.parse(data)
-    // 加载景点图片
-    await loadAttractionPhotos()
-    // 回填缺失的餐饮坐标,旧session里的结果也尽量能显示餐厅点位
-    await loadMissingMealLocations()
-    // 等待DOM渲染完成后初始化地图
-    await nextTick()
-    initMaps()
-  }
+// ---- Day selection: `?day=N` (1-based) is the single source of truth. ----
+
+const dayCount = computed(() => tripPlan.value?.days?.length ?? 0)
+
+/** Parse ?day; null when absent or not a positive integer. */
+const requestedDay = computed(() => {
+  const raw = Array.isArray(route.query.day) ? route.query.day[0] : route.query.day
+  if (raw === undefined || raw === null || raw === '') return null
+  const value = Number(raw)
+  return Number.isInteger(value) && value >= 1 ? value : NaN
 })
 
-onUnmounted(() => {
-  destroyMaps()
+const dayIndex = computed(() => {
+  const count = dayCount.value
+  if (!count) return 0
+  const requested = requestedDay.value
+  if (requested === null || Number.isNaN(requested)) return 0
+  return Math.min(requested, count) - 1
 })
 
-const goBack = () => {
-  router.push('/')
-}
-
-// 滚动到指定区域
-const scrollToSection = ({ key }: { key: string }) => {
-  activeSection.value = key
-
-  if (key.startsWith('day-')) {
-    const dayIndex = Number(key.replace('day-', ''))
-    if (Number.isInteger(dayIndex)) {
-      activeDays.value = [dayIndex]
+// Normalize an invalid/out-of-range ?day in place (no extra history entry).
+watch(
+  [requestedDay, dayCount],
+  ([requested, count]) => {
+    if (!count) return
+    const normalized = dayIndex.value + 1
+    if (requested !== normalized) {
+      router.replace({ query: { ...route.query, day: String(normalized) } })
     }
-  }
+  },
+  { immediate: true }
+)
 
-  const element = document.getElementById(key)
-  if (element) {
-    element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-}
-
-// 切换编辑模式
-const toggleEditMode = () => {
-  editMode.value = true
-  // 保存原始数据用于取消编辑
-  originalPlan.value = JSON.parse(JSON.stringify(tripPlan.value))
-  message.info(t('result.toastEditMode'))
-}
-
-// 保存修改
-const saveChanges = () => {
-  editMode.value = false
-  // 更新sessionStorage
-  if (tripPlan.value) {
-    sessionStorage.setItem('tripPlan', JSON.stringify(tripPlan.value))
-  }
-  message.success(t('result.toastSaved'))
-
-  // 重新初始化地图以反映更改
-  destroyMaps()
-  nextTick(() => {
-    initMaps()
-  })
-}
-
-// 取消编辑
-const cancelEdit = () => {
-  if (originalPlan.value) {
-    tripPlan.value = JSON.parse(JSON.stringify(originalPlan.value))
-  }
-  editMode.value = false
-  message.info(t('result.toastCanceled'))
-
-  destroyMaps()
-  nextTick(() => {
-    initMaps()
-  })
-}
-
-// 删除景点
-const deleteAttraction = (dayIndex: number, attrIndex: number) => {
-  if (!tripPlan.value) return
-
-  const day = tripPlan.value.days[dayIndex]
-  if (day.attractions.length <= 1) {
-    message.warning(t('result.toastKeepOne'))
-    return
-  }
-
-  day.attractions.splice(attrIndex, 1)
-  message.success(t('result.toastDeleted'))
-}
-
-// 移动景点顺序
-const moveAttraction = (dayIndex: number, attrIndex: number, direction: 'up' | 'down') => {
-  if (!tripPlan.value) return
-
-  const day = tripPlan.value.days[dayIndex]
-  const attractions = day.attractions
-
-  if (direction === 'up' && attrIndex > 0) {
-    [attractions[attrIndex], attractions[attrIndex - 1]] = [attractions[attrIndex - 1], attractions[attrIndex]]
-  } else if (direction === 'down' && attrIndex < attractions.length - 1) {
-    [attractions[attrIndex], attractions[attrIndex + 1]] = [attractions[attrIndex + 1], attractions[attrIndex]]
+function setDay(index: number, fromNav: boolean) {
+  if (index < 0 || index >= dayCount.value || index === dayIndex.value) return
+  router.push({ query: { ...route.query, day: String(index + 1) } })
+  if (fromNav) {
+    nextTick(() => {
+      // Only scroll when the day panel's top has scrolled out of view.
+      const panel = dayPanel.value
+      if (panel && panel.getBoundingClientRect().top < 0) {
+        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        panel.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' })
+      }
+    })
   }
 }
 
-const getMealLabel = (type: string): string => {
-  const labels: Record<string, string> = {
+watch(dayIndex, () => {
+  if (selectedKey.value && !selectedKey.value.startsWith(`d${dayIndex.value}-`)) selectedKey.value = null
+})
+
+const currentDay = computed(() => tripPlan.value?.days?.[dayIndex.value] ?? null)
+
+// ---- Heading ----
+
+/** Use the saved request only when it belongs to this plan. */
+const matchingRequest = computed(() => {
+  const req = request.value
+  const plan = tripPlan.value
+  if (!req || !plan) return null
+  return req.city?.trim() === plan.city?.trim() && req.start_date === plan.start_date ? req : null
+})
+
+/** Plan city in the UI language (the plan itself always stores the Chinese name). */
+const displayCity = computed(() => {
+  const city = tripPlan.value?.city ?? ''
+  return locale.value === 'en' ? findCity(city)?.city.en ?? city : city
+})
+
+const title = computed(() =>
+  tripPlan.value
+    ? t(dayCount.value === 1 ? 'result.titleDayOne' : 'result.titleDays', { city: displayCity.value, n: dayCount.value })
+    : ''
+)
+
+const formatShortDate = (date: string | undefined) => {
+  const parts = splitDate(date)
+  if (!parts) return date || ''
+  return locale.value === 'en'
+    ? new Date(parts.year, parts.month - 1, parts.day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : `${parts.year}.${String(parts.month).padStart(2, '0')}.${String(parts.day).padStart(2, '0')}`
+}
+
+const metaLine = computed(() => {
+  const plan = tripPlan.value
+  if (!plan) return ''
+  const parts: string[] = []
+  if (plan.start_date || plan.end_date) {
+    parts.push(
+      plan.end_date && plan.end_date !== plan.start_date
+        ? `${formatShortDate(plan.start_date)} — ${formatShortDate(plan.end_date)}`
+        : formatShortDate(plan.start_date)
+    )
+  }
+  const n = dayCount.value
+  if (n) parts.push(n === 1 ? t('result.metaDaysOne') : t('result.metaDays', { n, nights: n - 1 }))
+  const party = matchingRequest.value?.party
+  if (party) {
+    const who: string[] = []
+    if (party.adults) who.push(t('result.partyAdults', { n: party.adults }))
+    if (party.children) who.push(t('result.partyChildren', { n: party.children }))
+    if (party.elders) who.push(t('result.partyElders', { n: party.elders }))
+    if (who.length) parts.push(who.join(locale.value === 'zh' ? '、' : ', '))
+  }
+  return parts.join('  /  ')
+})
+
+const dayHeading = computed(() => {
+  const day = currentDay.value
+  if (!day) return ''
+  const parts = splitDate(day.date)
+  const date = !parts
+    ? ''
+    : locale.value === 'en'
+      ? new Date(parts.year, parts.month - 1, parts.day).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+      : `${parts.month}月${parts.day}日`
+  return date ? `${t('result.dayTitle', { n: dayIndex.value + 1 })} · ${date}` : t('result.dayTitle', { n: dayIndex.value + 1 })
+})
+
+const isFallback = computed(() => isFallbackStatus(meta.value?.status))
+const planNotice = computed(() => {
+  if (isFallback.value) return t('result.fallbackDesc')
+  if (meta.value?.switchedModel) return t('result.switchedDesc')
+  return ''
+})
+
+const budgetCap = computed(() => {
+  const amount = matchingRequest.value?.budget_constraint?.amount
+  return isAmount(amount) ? amount : null
+})
+
+// ---- Day content ----
+
+const displayHotel = computed(() => getDisplayHotel(tripPlan.value, dayIndex.value))
+
+const hotelFacts = computed(() => {
+  const hotel = displayHotel.value?.hotel
+  if (!hotel) return []
+  const facts: { label: string; value: string }[] = []
+  if (hotel.type) facts.push({ label: t('result.hotelType'), value: hotel.type })
+  if (hotel.price_range) facts.push({ label: t('result.hotelPrice'), value: hotel.price_range })
+  // A carried-over stay adds no night, so its per-night cost is not repeated here.
+  if (isAmount(hotel.estimated_cost) && !displayHotel.value?.isCarriedOver) facts.push({ label: t('result.hotelCost'), value: money(hotel.estimated_cost) })
+  if (hotel.rating !== undefined && hotel.rating !== null && String(hotel.rating).trim() !== '') {
+    facts.push({ label: t('result.hotelRating'), value: String(hotel.rating) })
+  }
+  if (hotel.distance && String(hotel.distance).trim()) facts.push({ label: t('result.hotelDistance'), value: hotel.distance })
+  return facts
+})
+
+const mapGlyphs = computed(() => ({
+  hotel: t('map.markerHotel'),
+  breakfast: t('map.markerBreakfast'),
+  lunch: t('map.markerLunch'),
+  dinner: t('map.markerDinner'),
+  snack: t('map.markerSnack')
+}))
+
+/** Keys on the current day that have valid coordinates (drives "view on map"). */
+const mappedKeys = computed(() => {
+  void mapRevision.value
+  return new Set(buildDayPoints(tripPlan.value, dayIndex.value, mapGlyphs.value).points.map(point => point.key))
+})
+
+const mealLabel = (type: string) =>
+  ({
     breakfast: t('result.mealBreakfast'),
     lunch: t('result.mealLunch'),
     dinner: t('result.mealDinner'),
     snack: t('result.mealSnack')
-  }
-  return labels[type] || type
-}
+  })[type] || type
 
-const normalizeWeatherText = (weather: unknown): string => String(weather || '').trim()
-
-const getWeatherIcon = (weather: unknown, period: 'day' | 'night'): string => {
-  const text = normalizeWeatherText(weather)
-  if (!text || text.includes('未知') || text.includes('暂无')) return '—'
-  if (text.includes('雷')) return '⛈️'
-  if (text.includes('暴雨') || text.includes('大雨')) return '🌧️'
-  if (text.includes('雨')) return '🌦️'
-  if (text.includes('雪')) return '❄️'
-  if (text.includes('冰雹')) return '🌨️'
-  if (text.includes('雾') || text.includes('霾')) return '🌫️'
-  if (text.includes('沙') || text.includes('尘')) return '🌪️'
-  if (text.includes('阴')) return '☁️'
-  if (text.includes('云')) return period === 'night' ? '☁️' : '⛅'
-  if (text.includes('晴')) return period === 'night' ? '🌙' : '☀️'
-  return period === 'night' ? '🌙' : '🌤️'
-}
-
-const getWeatherCardClass = (dayWeather: unknown, nightWeather: unknown): string => {
-  const text = `${normalizeWeatherText(dayWeather)} ${normalizeWeatherText(nightWeather)}`
-  if (!text.trim() || text.includes('未知') || text.includes('暂无')) return 'weather-card-unknown'
-  if (text.includes('雨') || text.includes('雷')) return 'weather-card-rain'
-  if (text.includes('雪')) return 'weather-card-snow'
-  if (text.includes('雾') || text.includes('霾') || text.includes('沙') || text.includes('尘')) return 'weather-card-haze'
-  if (text.includes('阴') || text.includes('云')) return 'weather-card-cloud'
-  return 'weather-card-sun'
-}
-
-// 加载所有景点图片
-const loadAttractionPhotos = async () => {
-  if (!tripPlan.value) return
-
-  const promises: Promise<void>[] = []
-
-  tripPlan.value.days.forEach(day => {
-    day.attractions.forEach(attraction => {
-      const promise = fetch(`${API_BASE_URL}/api/poi/photo?name=${encodeURIComponent(attraction.name)}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && data.data.photo_url) {
-            attractionPhotos.value[attraction.name] = data.data.photo_url
-          }
-        })
-        .catch(err => {
-          console.error(`获取${attraction.name}图片失败:`, err)
-        })
-
-      promises.push(promise)
-    })
-  })
-
-  await Promise.all(promises)
-}
-
-const isLodgingBreakfastMeal = (type: string, name: string): boolean => {
-  if (type !== 'breakfast') return false
-  return ['酒店早餐', '民宿早餐', '客栈早餐', '住宿早餐'].some(keyword => name.includes(keyword))
-}
-
-const loadMissingMealLocations = async () => {
-  if (!tripPlan.value) return
-
-  let updatedCount = 0
-  const promises: Promise<void>[] = []
-
-  tripPlan.value.days.forEach(day => {
-    day.meals.forEach(meal => {
-      if (isValidLocation(meal.location) || isLodgingBreakfastMeal(meal.type, meal.name)) {
-        return
-      }
-
-      const promise = fetch(
-        `${API_BASE_URL}/api/poi/search?keywords=${encodeURIComponent(meal.name)}&city=${encodeURIComponent(tripPlan.value!.city)}&source_role=food`
-      )
-        .then(res => res.json())
-        .then(data => {
-          const poi = Array.isArray(data.data)
-            ? data.data.find((item: any) => isValidLocation(item.location))
-            : null
-
-          if (!poi) return
-
-          if (!meal.address && poi.address) {
-            meal.address = poi.address
-          }
-
-          meal.location = normalizeLocation(poi.location)
-          updatedCount += 1
-        })
-        .catch(err => {
-          console.warn(`餐饮坐标回填失败: ${meal.name}`, err)
-        })
-
-      promises.push(promise)
-    })
-  })
-
-  await Promise.all(promises)
-
-  if (updatedCount > 0 && tripPlan.value) {
-    sessionStorage.setItem('tripPlan', JSON.stringify(tripPlan.value))
-  }
-}
-
-// 获取景点图片
-const getAttractionImage = (name: string, index: number): string => {
-  // 如果已加载真实图片,返回真实图片
-  if (attractionPhotos.value[name]) {
-    return attractionPhotos.value[name]
-  }
-
-  // 返回一个纯色占位图(避免跨域问题)
-  const colors = [
-    { start: '#1677ff', end: '#69b1ff' },
-    { start: '#0f766e', end: '#5eead4' },
-    { start: '#475569', end: '#94a3b8' },
-    { start: '#2563eb', end: '#93c5fd' },
-    { start: '#334155', end: '#cbd5e1' }
+const attractionFacts = (item: Attraction) =>
+  [
+    isAmount(item.visit_duration) ? t('result.duration', { n: item.visit_duration }) : '',
+    isAmount(item.ticket_price) ? (item.ticket_price === 0 ? t('result.ticketFree') : t('result.ticket', { v: money(item.ticket_price) })) : '',
+    item.rating !== undefined && item.rating !== null && String(item.rating) !== '' ? t('result.rating', { v: item.rating }) : ''
   ]
-  const colorIndex = index % colors.length
-  const { start, end } = colors[colorIndex]
+    .filter(Boolean)
+    .join(' · ')
 
-  // 使用base64编码避免中文问题
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">
-    <defs>
-      <linearGradient id="grad${index}" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" style="stop-color:${start};stop-opacity:1" />
-        <stop offset="100%" style="stop-color:${end};stop-opacity:1" />
-      </linearGradient>
-    </defs>
-    <rect width="400" height="300" fill="url(#grad${index})"/>
-    <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="bold" fill="white">${name}</text>
-  </svg>`
-
-  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`
+/**
+ * The plan's own image_url is shown as-is. The existing POI photo service is a
+ * keyword search on a stock library, so its result may not depict this place:
+ * it is always labelled as a stock reference image, never passed off as the POI.
+ */
+const photoFor = (item: Attraction): { url: string; stock: boolean } | null => {
+  const own = typeof item.image_url === 'string' ? item.image_url.trim() : ''
+  if (own) return { url: own, stock: false }
+  const stock = attractionPhotos.value[item.name]
+  // The same stock image returned for different places is not specific to any of them.
+  if (!stock || genericStockUrls.value.has(stock)) return null
+  return { url: stock, stock: true }
 }
 
-// 图片加载失败时的处理
-const handleImageError = (event: Event) => {
-  const img = event.target as HTMLImageElement
-  // 使用灰色占位图
-  img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect width="400" height="300" fill="%23f0f0f0"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="18" fill="%23999"%3E图片加载失败%3C/text%3E%3C/svg%3E'
-}
-
-const replaceMapSnapshots = (exportContainer: HTMLElement) => {
-  const mapContainers = document.querySelectorAll<HTMLElement>('#amap-container, .daily-amap-container')
-
-  mapContainers.forEach(container => {
-    const mapCanvas = container.querySelector('canvas') as HTMLCanvasElement | null
-    if (!mapCanvas || !container.id) return
-
-    try {
-      const mapSnapshot = mapCanvas.toDataURL('image/png')
-      const exportMapContainer = exportContainer.querySelector<HTMLElement>(`#${container.id}`)
-      if (exportMapContainer) {
-        exportMapContainer.innerHTML = `<img src="${mapSnapshot}" style="width:100%;height:100%;object-fit:cover;" />`
-      }
-    } catch (err) {
-      console.warn(`地图截图失败: ${container.id}`, err)
-    }
+const genericStockUrls = computed(() => {
+  const owners = new Map<string, Set<string>>()
+  Object.entries(attractionPhotos.value).forEach(([name, url]) => {
+    if (!owners.has(url)) owners.set(url, new Set())
+    owners.get(url)!.add(name)
   })
-}
-
-// 导出为图片
-const exportAsImage = async () => {
-  try {
-    message.loading({ content: t('result.toastGenImage'), key: 'export', duration: 0 })
-
-    const element = document.querySelector('.main-content') as HTMLElement
-    if (!element) {
-      throw new Error(t('result.errNoContent'))
-    }
-
-    // 创建一个独立的容器
-    const exportContainer = document.createElement('div')
-    exportContainer.style.width = element.offsetWidth + 'px'
-    exportContainer.style.backgroundColor = '#f5f7fa'
-    exportContainer.style.padding = '20px'
-
-    // 复制所有内容
-    exportContainer.innerHTML = element.innerHTML
-
-    // 处理地图截图
-    replaceMapSnapshots(exportContainer)
-
-    // 移除所有ant-card类,替换为纯div
-    const cards = exportContainer.querySelectorAll('.ant-card')
-    cards.forEach((card) => {
-      const cardEl = card as HTMLElement
-      try {
-        cardEl.className = '' // 移除所有类
-        cardEl.style.setProperty('background-color', '#ffffff')
-        cardEl.style.setProperty('border-radius', '8px')
-        cardEl.style.setProperty('box-shadow', '0 10px 24px rgba(15, 23, 42, 0.08)')
-        cardEl.style.setProperty('margin-bottom', '20px')
-        cardEl.style.setProperty('overflow', 'hidden')
-      } catch (err) {
-        console.error('设置卡片样式失败:', err)
-      }
-    })
-
-    // 处理卡片头部
-    const cardHeads = exportContainer.querySelectorAll('.ant-card-head')
-    cardHeads.forEach((head) => {
-      const headEl = head as HTMLElement
-      try {
-        headEl.style.setProperty('background-color', '#ffffff')
-        headEl.style.setProperty('color', '#0f172a')
-        headEl.style.setProperty('padding', '16px 24px')
-        headEl.style.setProperty('font-size', '18px')
-        headEl.style.setProperty('font-weight', '600')
-      } catch (err) {
-        console.error('设置卡片头部样式失败:', err)
-      }
-    })
-
-    // 处理卡片内容
-    const cardBodies = exportContainer.querySelectorAll('.ant-card-body')
-    cardBodies.forEach((body) => {
-      const bodyEl = body as HTMLElement
-      bodyEl.style.setProperty('background-color', '#ffffff')
-      bodyEl.style.setProperty('padding', '24px')
-    })
-
-    // 处理酒店卡片头部
-    const hotelCards = exportContainer.querySelectorAll('.hotel-card')
-    hotelCards.forEach((card) => {
-      const head = card.querySelector('.ant-card-head') as HTMLElement
-      if (head) {
-        head.style.setProperty('background-color', '#f8fafc')
-      }
-      (card as HTMLElement).style.setProperty('background-color', '#ffffff')
-    })
-
-    // 处理天气卡片
-    const weatherCards = exportContainer.querySelectorAll('.weather-card')
-    weatherCards.forEach((card) => {
-      (card as HTMLElement).style.setProperty('background-color', '#f8fafc')
-    })
-
-    // 处理预算总计
-    const budgetTotal = exportContainer.querySelector('.budget-total')
-    if (budgetTotal) {
-      const el = budgetTotal as HTMLElement
-      el.style.setProperty('background-color', '#1677ff')
-      el.style.setProperty('color', '#ffffff')
-      el.style.setProperty('padding', '20px')
-      el.style.setProperty('border-radius', '8px')
-      el.style.setProperty('margin-bottom', '20px')
-    }
-
-    // 处理预算项
-    const budgetItems = exportContainer.querySelectorAll('.budget-item')
-    budgetItems.forEach((item) => {
-      const el = item as HTMLElement
-      el.style.setProperty('background-color', '#f5f7fa')
-      el.style.setProperty('padding', '16px')
-      el.style.setProperty('border-radius', '8px')
-      el.style.setProperty('margin-bottom', '12px')
-    })
-
-    // 添加到body(隐藏)
-    exportContainer.style.position = 'absolute'
-    exportContainer.style.left = '-9999px'
-    document.body.appendChild(exportContainer)
-
-    const canvas = await html2canvas(exportContainer, {
-      backgroundColor: '#f5f7fa',
-      scale: 2,
-      logging: false,
-      useCORS: true,
-      allowTaint: true
-    })
-
-    // 移除容器
-    document.body.removeChild(exportContainer)
-
-    // 转换为图片并下载
-    const link = document.createElement('a')
-    link.download = `${t('result.exportFilePrefix')}_${tripPlan.value?.city}_${new Date().getTime()}.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
-
-    message.success({ content: t('result.toastImageOk'), key: 'export' })
-  } catch (error: any) {
-    console.error('导出图片失败:', error)
-    message.error({ content: t('result.toastImageFail', { msg: error.message }), key: 'export' })
-  }
-}
-
-// 导出为PDF
-const exportAsPDF = async () => {
-  try {
-    message.loading({ content: t('result.toastGenPdf'), key: 'export', duration: 0 })
-
-    const element = document.querySelector('.main-content') as HTMLElement
-    if (!element) {
-      throw new Error(t('result.errNoContent'))
-    }
-
-    // 创建一个独立的容器
-    const exportContainer = document.createElement('div')
-    exportContainer.style.width = element.offsetWidth + 'px'
-    exportContainer.style.backgroundColor = '#f5f7fa'
-    exportContainer.style.padding = '20px'
-
-    // 复制所有内容
-    exportContainer.innerHTML = element.innerHTML
-
-    // 处理地图截图
-    replaceMapSnapshots(exportContainer)
-
-    // 移除所有ant-card类,替换为纯div
-    const cards = exportContainer.querySelectorAll('.ant-card')
-    cards.forEach((card) => {
-      const cardEl = card as HTMLElement
-      try {
-        cardEl.className = ''
-        cardEl.style.setProperty('background-color', '#ffffff')
-        cardEl.style.setProperty('border-radius', '12px')
-        cardEl.style.setProperty('box-shadow', '0 4px 12px rgba(0, 0, 0, 0.1)')
-        cardEl.style.setProperty('margin-bottom', '20px')
-        cardEl.style.setProperty('overflow', 'hidden')
-      } catch (err) {
-        console.error('设置卡片样式失败:', err)
-      }
-    })
-
-    // 处理卡片头部
-    const cardHeads = exportContainer.querySelectorAll('.ant-card-head')
-    cardHeads.forEach((head) => {
-      const headEl = head as HTMLElement
-      try {
-        headEl.style.setProperty('background-color', '#ffffff')
-        headEl.style.setProperty('color', '#0f172a')
-        headEl.style.setProperty('padding', '16px 24px')
-        headEl.style.setProperty('font-size', '18px')
-        headEl.style.setProperty('font-weight', '600')
-      } catch (err) {
-        console.error('设置卡片头部样式失败:', err)
-      }
-    })
-
-    // 处理卡片内容
-    const cardBodies = exportContainer.querySelectorAll('.ant-card-body')
-    cardBodies.forEach((body) => {
-      const bodyEl = body as HTMLElement
-      bodyEl.style.setProperty('background-color', '#ffffff')
-      bodyEl.style.setProperty('padding', '24px')
-    })
-
-    // 处理酒店卡片头部
-    const hotelCards = exportContainer.querySelectorAll('.hotel-card')
-    hotelCards.forEach((card) => {
-      const head = card.querySelector('.ant-card-head') as HTMLElement
-      if (head) {
-        head.style.setProperty('background-color', '#f8fafc')
-      }
-      (card as HTMLElement).style.setProperty('background-color', '#ffffff')
-    })
-
-    // 处理天气卡片
-    const weatherCards = exportContainer.querySelectorAll('.weather-card')
-    weatherCards.forEach((card) => {
-      (card as HTMLElement).style.setProperty('background-color', '#f8fafc')
-    })
-
-    // 处理预算总计
-    const budgetTotal = exportContainer.querySelector('.budget-total')
-    if (budgetTotal) {
-      const el = budgetTotal as HTMLElement
-      el.style.setProperty('background-color', '#1677ff')
-      el.style.setProperty('color', '#ffffff')
-      el.style.setProperty('padding', '20px')
-      el.style.setProperty('border-radius', '8px')
-      el.style.setProperty('margin-bottom', '20px')
-    }
-
-    // 处理预算项
-    const budgetItems = exportContainer.querySelectorAll('.budget-item')
-    budgetItems.forEach((item) => {
-      const el = item as HTMLElement
-      el.style.setProperty('background-color', '#f5f7fa')
-      el.style.setProperty('padding', '16px')
-      el.style.setProperty('border-radius', '8px')
-      el.style.setProperty('margin-bottom', '12px')
-    })
-
-    // 添加到body(隐藏)
-    exportContainer.style.position = 'absolute'
-    exportContainer.style.left = '-9999px'
-    document.body.appendChild(exportContainer)
-
-    const canvas = await html2canvas(exportContainer, {
-      backgroundColor: '#f5f7fa',
-      scale: 2,
-      logging: false,
-      useCORS: true,
-      allowTaint: true
-    })
-
-    // 移除容器
-    document.body.removeChild(exportContainer)
-
-    const imgData = canvas.toDataURL('image/png')
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    })
-
-    const imgWidth = 210 // A4宽度(mm)
-    const imgHeight = (canvas.height * imgWidth) / canvas.width
-
-    // 如果内容高度超过一页,分页处理
-    let heightLeft = imgHeight
-    let position = 0
-
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-    heightLeft -= 297 // A4高度
-
-    while (heightLeft > 0) {
-      position = heightLeft - imgHeight
-      pdf.addPage()
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-      heightLeft -= 297
-    }
-
-    pdf.save(`${t('result.exportFilePrefix')}_${tripPlan.value?.city}_${new Date().getTime()}.pdf`)
-
-    message.success({ content: t('result.toastPdfOk'), key: 'export' })
-  } catch (error: any) {
-    console.error('导出PDF失败:', error)
-    message.error({ content: t('result.toastPdfFail', { msg: error.message }), key: 'export' })
-  }
-}
-
-const DEFAULT_MAP_CENTER = [116.397128, 39.916527]
-const pointColors: Record<MapPointType, string> = {
-  hotel: '#ef4444',
-  attraction: '#1677ff',
-  meal: '#f59e0b'
-}
-const dayRouteColors = ['#1677ff', '#16a34a', '#f59e0b', '#8b5cf6', '#ef4444', '#0f766e']
-
-const getDailyMapContainerId = (dayIndex: number): string => `daily-amap-container-${dayIndex}`
-
-const escapeHtml = (value: unknown): string => String(value ?? '')
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;')
-
-const isValidLocation = (location: any): boolean => {
-  if (!location) return false
-  const longitude = Number(location.longitude)
-  const latitude = Number(location.latitude)
-  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return false
-  // Reject null-island (0,0) and out-of-range coordinates. Without this a POI
-  // with missing/zero coords renders at lng/lat 0,0 (off West Africa), and a
-  // swapped lng/lat (e.g. latitude 23 landing in the longitude slot) also lands
-  // in Africa and drags the whole map there.
-  if (longitude === 0 && latitude === 0) return false
-  if (longitude < -180 || longitude > 180) return false
-  if (latitude < -90 || latitude > 90) return false
-  return true
-}
-
-const normalizeLocation = (location: any) => ({
-  longitude: Number(location.longitude),
-  latitude: Number(location.latitude)
+  return new Set([...owners].filter(([, names]) => names.size > 1).map(([url]) => url))
 })
 
-const getMealMarkerText = (type: string): string => {
-  const labels: Record<string, string> = {
-    breakfast: t('result.markerBreakfast'),
-    lunch: t('result.markerLunch'),
-    dinner: t('result.markerDinner'),
-    snack: t('result.markerSnack')
+// ---- List <-> map linking ----
+
+function viewOnMap(key: string) {
+  selectedKey.value = key
+  // On the single-column layout the map sits below the list.
+  if (window.matchMedia('(max-width: 760px)').matches) {
+    nextTick(() => mapWrap.value?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
   }
-  return labels[type] || t('result.markerSnack')
 }
 
-const getMealRouteRank = (type: string): number => {
-  const ranks: Record<string, number> = {
-    breakfast: 10,
-    lunch: 40,
-    snack: 70,
-    dinner: 90
+function onMapSelect(key: string, pointDay: number) {
+  selectedKey.value = key
+  if (pointDay !== dayIndex.value) {
+    router.push({ query: { ...route.query, day: String(pointDay + 1) } })
   }
-  return ranks[type] || 80
-}
-
-const getDisplayHotelForDay = (dayIndex: number) => {
-  const days = tripPlan.value?.days || []
-  const currentHotel = days[dayIndex]?.hotel
-  if (currentHotel) {
-    return {
-      hotel: currentHotel,
-      isCarriedOver: false
-    }
-  }
-
-  for (let index = dayIndex - 1; index >= 0; index -= 1) {
-    const previousHotel = days[index]?.hotel
-    if (previousHotel) {
-      return {
-        hotel: previousHotel,
-        isCarriedOver: true
-      }
-    }
-  }
-
-  const firstHotel = days.find(day => day.hotel)?.hotel
-  return firstHotel
-    ? {
-        hotel: firstHotel,
-        isCarriedOver: true
-      }
-    : null
-}
-
-const getDayMapPoints = (dayIndex: number): MapPoint[] => {
-  const day = tripPlan.value?.days[dayIndex]
-  if (!day) return []
-
-  const points: MapPoint[] = []
-  const displayHotel = getDisplayHotelForDay(dayIndex)
-
-  if (displayHotel?.hotel && isValidLocation(displayHotel.hotel.location)) {
-    const hotel = displayHotel.hotel
-    points.push({
-      type: 'hotel',
-      name: hotel.name,
-      address: hotel.address,
-      description: displayHotel.isCarriedOver ? t('result.carriedOverHotel') : hotel.distance,
-      location: normalizeLocation(hotel.location),
-      dayIndex,
-      markerText: t('result.markerStay'),
-      order: 0,
-      routeOrder: 0,
-      meta: `${hotel.type || day.accommodation}${hotel.price_range ? ` | ${hotel.price_range}` : ''}`
-    })
-  }
-
-  day.attractions.forEach((attraction, attrIndex) => {
-    if (!isValidLocation(attraction.location)) return
-
-    points.push({
-      type: 'attraction',
-      name: attraction.name,
-      address: attraction.address,
-      description: attraction.description,
-      location: normalizeLocation(attraction.location),
-      dayIndex,
-      markerText: t('result.markerAttraction', { n: attrIndex + 1 }),
-      order: 100 + attrIndex,
-      routeOrder: 20 + attrIndex * 20,
-      meta: attraction.visit_duration ? t('result.visitMeta', { n: attraction.visit_duration }) : undefined
-    })
-  })
-
-  day.meals.forEach((meal, mealIndex) => {
-    if (!isValidLocation(meal.location)) return
-
-    points.push({
-      type: 'meal',
-      name: meal.name,
-      address: meal.address,
-      description: meal.description,
-      location: normalizeLocation(meal.location),
-      dayIndex,
-      markerText: getMealMarkerText(meal.type),
-      order: 200 + getMealRouteRank(meal.type) + mealIndex,
-      routeOrder: getMealRouteRank(meal.type),
-      meta: meal.estimated_cost ? t('result.mealCostMeta', { label: getMealLabel(meal.type), cost: meal.estimated_cost }) : getMealLabel(meal.type)
-    })
-  })
-
-  return points.sort((a, b) => a.order - b.order)
-}
-
-const hasDailyMapLocations = (dayIndex: number): boolean => getDayMapPoints(dayIndex).length > 0
-
-const getDailyRoutePoints = (dayIndex: number): MapPoint[] => {
-  const points = getDayMapPoints(dayIndex)
-  const hotelPoint = points.find(point => point.type === 'hotel')
-  const attractionPoints = points
-    .filter(point => point.type === 'attraction')
-    .sort((a, b) => a.routeOrder - b.routeOrder)
-  const mealPoints = (type: string) => points
-    .filter(point => point.type === 'meal' && point.markerText === getMealMarkerText(type))
-    .sort((a, b) => a.routeOrder - b.routeOrder)
-
-  const route: MapPoint[] = []
-  if (hotelPoint) route.push(hotelPoint)
-  route.push(...mealPoints('breakfast'))
-  if (attractionPoints[0]) route.push(attractionPoints[0])
-  route.push(...mealPoints('lunch'))
-  route.push(...attractionPoints.slice(1))
-  route.push(...mealPoints('snack'))
-  route.push(...mealPoints('dinner'))
-  if (hotelPoint && route.length > 1) route.push(hotelPoint)
-
-  return route
-}
-
-const getPointTypeLabel = (type: MapPointType): string => {
-  const labels: Record<MapPointType, string> = {
-    hotel: t('result.pointStay'),
-    attraction: t('result.pointSights'),
-    meal: t('result.pointFood')
-  }
-  return labels[type]
-}
-
-const buildInfoWindowContent = (point: MapPoint): string => {
-  const detailRows = [
-    point.address ? `<p style="margin:4px 0;"><strong>${t('result.infoAddr')}:</strong> ${escapeHtml(point.address)}</p>` : '',
-    point.meta ? `<p style="margin:4px 0;"><strong>${t('result.infoMeta')}:</strong> ${escapeHtml(point.meta)}</p>` : '',
-    point.description ? `<p style="margin:4px 0;"><strong>${t('result.infoDesc')}:</strong> ${escapeHtml(point.description)}</p>` : ''
-  ].join('')
-
-  return `
-    <div style="padding:10px;max-width:260px;">
-      <div style="margin:0 0 8px;color:${pointColors[point.type]};font-weight:700;">${t('result.infoDayType', { n: point.dayIndex + 1, type: getPointTypeLabel(point.type) })}</div>
-      <h4 style="margin:0 0 8px 0;color:#0f172a;">${escapeHtml(point.name)}</h4>
-      ${detailRows}
-    </div>
-  `
-}
-
-const createMarkerLabelHtml = (point: MapPoint, prefix = ''): string => `
-  <div style="background:${pointColors[point.type]};color:#fff;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:700;box-shadow:0 2px 8px rgba(15,23,42,.18);white-space:nowrap;">
-    ${escapeHtml(`${prefix}${point.markerText}`)}
-  </div>
-`
-
-const createMarker = (AMap: any, targetMap: any, point: MapPoint, prefix = '') => {
-  const marker = new AMap.Marker({
-    position: [point.location.longitude, point.location.latitude],
-    title: point.name,
-    label: {
-      content: createMarkerLabelHtml(point, prefix),
-      offset: new AMap.Pixel(0, -30)
+  nextTick(() => {
+    const el = document.querySelector<HTMLElement>(`[data-key="${key}"]`)
+    if (!el) return
+    const box = el.getBoundingClientRect()
+    if (box.top < 60 || box.bottom > window.innerHeight) {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
     }
   })
-
-  const infoWindow = new AMap.InfoWindow({
-    content: buildInfoWindowContent(point),
-    offset: new AMap.Pixel(0, -30)
-  })
-
-  marker.on('click', () => {
-    infoWindow.open(targetMap, marker.getPosition())
-  })
-
-  return marker
 }
 
-const drawRoute = (AMap: any, targetMap: any, routePoints: MapPoint[], color: string) => {
-  if (routePoints.length < 2) return
+// ---- Editing ----
 
-  const path = routePoints.map(point => [
-    point.location.longitude,
-    point.location.latitude
-  ])
+const editConditions = () => router.push('/')
 
-  const polyline = new AMap.Polyline({
-    path,
-    strokeColor: color,
-    strokeWeight: 4,
-    strokeOpacity: 0.82,
-    strokeStyle: 'solid',
-    showDir: true
-  })
-
-  targetMap.add(polyline)
+const toggleEditMode = () => {
+  editMode.value = true
+  originalPlan.value = JSON.parse(JSON.stringify(tripPlan.value))
+  selectedKey.value = null
+  message.info(t('result.toastEditMode'))
 }
 
-const fitMapToMarkers = (targetMap: any, markers: any[]) => {
-  if (markers.length > 1) {
-    targetMap.setFitView(markers)
-  } else if (markers.length === 1) {
-    const position = markers[0].getPosition()
-    targetMap.setZoomAndCenter(13, position)
+const saveChanges = () => {
+  editMode.value = false
+  if (tripPlan.value) savePlan(tripPlan.value)
+  originalPlan.value = null
+  mapRevision.value += 1
+  message.success(t('result.toastSaved'))
+}
+
+const cancelEdit = () => {
+  if (originalPlan.value) tripPlan.value = JSON.parse(JSON.stringify(originalPlan.value))
+  originalPlan.value = null
+  editMode.value = false
+  mapRevision.value += 1
+  message.info(t('result.toastCanceled'))
+}
+
+const deleteAttraction = (attrIndex: number) => {
+  const day = currentDay.value
+  if (!day) return
+  if (day.attractions.length <= 1) {
+    message.warning(t('result.toastKeepOne'))
+    return
   }
+  day.attractions.splice(attrIndex, 1)
+  mapRevision.value += 1
+  message.success(t('result.toastDeleted'))
 }
 
-const renderDayLayer = (AMap: any, targetMap: any, dayIndex: number, labelPrefix = '') => {
-  const points = getDayMapPoints(dayIndex)
-  const markers = points.map(point => createMarker(AMap, targetMap, point, labelPrefix))
+const moveAttraction = (attrIndex: number, direction: 'up' | 'down') => {
+  const list = currentDay.value?.attractions
+  if (!list) return
+  const target = direction === 'up' ? attrIndex - 1 : attrIndex + 1
+  if (target < 0 || target >= list.length) return
+  ;[list[attrIndex], list[target]] = [list[target], list[attrIndex]]
+  mapRevision.value += 1
+}
 
-  if (markers.length) {
-    targetMap.add(markers)
-  }
+// ---- Data enrichment (existing services) ----
 
-  drawRoute(
-    AMap,
-    targetMap,
-    getDailyRoutePoints(dayIndex),
-    dayRouteColors[dayIndex % dayRouteColors.length]
+const loadAttractionPhotos = async () => {
+  const plan = tripPlan.value
+  if (!plan) return
+  const names = new Set<string>()
+  plan.days.forEach(day => (day.attractions || []).forEach(a => {
+    if (!(typeof a.image_url === 'string' && a.image_url.trim()) && a.name) names.add(a.name)
+  }))
+  await Promise.all(
+    [...names].map(name =>
+      fetch(`${API_BASE_URL}/api/poi/photo?name=${encodeURIComponent(name)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data?.success && data.data?.photo_url) attractionPhotos.value[name] = data.data.photo_url
+        })
+        .catch(err => console.warn(`POI photo unavailable: ${name}`, err))
+    )
   )
-
-  fitMapToMarkers(targetMap, markers)
-  return markers
 }
 
-const initOverviewMap = (AMap: any) => {
-  const container = document.getElementById('amap-container')
-  if (!container || !tripPlan.value) return
-
-  map = new AMap.Map('amap-container', {
-    zoom: 12,
-    center: DEFAULT_MAP_CENTER,
-    viewMode: '3D'
+/** Backfill meal coordinates from POI search; never invents a location. */
+const loadMissingMealLocations = async () => {
+  const plan = tripPlan.value
+  if (!plan) return
+  let updated = 0
+  const jobs: Promise<void>[] = []
+  plan.days.forEach(day => {
+    ;(day.meals || []).forEach(meal => {
+      if (isValidLocation(meal.location) || isLodgingBreakfastMeal(meal.type, meal.name) || !meal.name) return
+      jobs.push(
+        fetch(`${API_BASE_URL}/api/poi/search?keywords=${encodeURIComponent(meal.name)}&city=${encodeURIComponent(plan.city)}&source_role=food`)
+          .then(res => res.json())
+          .then(data => {
+            const poi = Array.isArray(data?.data) ? data.data.find((item: any) => isValidLocation(item.location)) : null
+            if (!poi) return
+            if (!meal.address && poi.address) meal.address = poi.address
+            meal.location = normalizeLocation(poi.location)
+            updated += 1
+          })
+          .catch(err => console.warn(`Meal location backfill failed: ${meal.name}`, err))
+      )
+    })
   })
-
-  const allMarkers: any[] = []
-
-  tripPlan.value.days.forEach((_, dayIndex) => {
-    const markers = getDayMapPoints(dayIndex).map(point =>
-      createMarker(AMap, map, point, `D${dayIndex + 1}`)
-    )
-
-    if (markers.length) {
-      map.add(markers)
-      allMarkers.push(...markers)
-    }
-
-    drawRoute(
-      AMap,
-      map,
-      getDailyRoutePoints(dayIndex),
-      dayRouteColors[dayIndex % dayRouteColors.length]
-    )
-  })
-
-  fitMapToMarkers(map, allMarkers)
-}
-
-const initDailyMap = (AMap: any, dayIndex: number) => {
-  const containerId = getDailyMapContainerId(dayIndex)
-  const container = document.getElementById(containerId)
-  if (!container) return
-
-  const existingMap = dailyMaps.get(dayIndex)
-  if (existingMap) {
-    existingMap.destroy()
+  await Promise.all(jobs)
+  if (updated > 0 && tripPlan.value && !editMode.value) {
+    savePlan(tripPlan.value)
+    mapRevision.value += 1
   }
-
-  const dailyMap = new AMap.Map(containerId, {
-    zoom: 12,
-    center: DEFAULT_MAP_CENTER,
-    viewMode: '3D'
-  })
-  dailyMaps.set(dayIndex, dailyMap)
-  renderDayLayer(AMap, dailyMap, dayIndex)
 }
 
-const initDailyMaps = (AMap: any) => {
+onMounted(() => {
   if (!tripPlan.value) return
+  void loadAttractionPhotos()
+  void loadMissingMealLocations()
+})
 
-  tripPlan.value.days.forEach((_, dayIndex) => {
-    initDailyMap(AMap, dayIndex)
-  })
-}
+// ---- Export: always the whole plan ----
 
-const loadAMap = async () => {
-  if (AMapApi) return AMapApi
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
-  AMapApi = await AMapLoader.load({
-    key: import.meta.env.VITE_AMAP_WEB_JS_KEY,
-    version: '2.0',
-    plugins: ['AMap.Marker', 'AMap.Polyline', 'AMap.InfoWindow']
-  })
-
-  return AMapApi
-}
-
-const initMaps = async () => {
+async function renderExportCanvas(): Promise<HTMLCanvasElement> {
+  mapSnapshot.value = (await tripMap.value?.snapshotAll()) ?? null
+  exporting.value = true
+  await nextTick()
+  await wait(150)
+  const sheet = document.querySelector<HTMLElement>('.export-sheet')
+  if (!sheet) throw new Error('export sheet missing')
   try {
-    const AMap = await loadAMap()
-    initOverviewMap(AMap)
-    initDailyMaps(AMap)
-    message.success(t('result.toastMapOk'))
-  } catch (error) {
-    console.error('地图加载失败:', error)
-    message.error(t('result.toastMapFail'))
+    return await html2canvas(sheet, { backgroundColor: '#f6f7f5', scale: 2, logging: false, useCORS: true })
+  } finally {
+    exporting.value = false
   }
 }
 
-const destroyMaps = () => {
-  if (map) {
-    map.destroy()
-    map = null
-  }
+const fileStem = () => `${t('result.exportFilePrefix')}_${tripPlan.value?.city ?? ''}_${Date.now()}`
 
-  dailyMaps.forEach(dailyMap => {
-    dailyMap.destroy()
-  })
-  dailyMaps.clear()
+async function exportAsImage() {
+  message.loading({ content: t('result.toastGenImage'), key: 'export', duration: 0 })
+  try {
+    const canvas = await renderExportCanvas()
+    const link = document.createElement('a')
+    link.download = `${fileStem()}.png`
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+    message.success({ content: t('result.toastImageOk'), key: 'export' })
+  } catch (error: any) {
+    console.error('Image export failed', error)
+    message.error({ content: t('result.toastImageFail', { msg: error?.message ?? '' }), key: 'export' })
+  }
+}
+
+async function exportAsPDF() {
+  message.loading({ content: t('result.toastGenPdf'), key: 'export', duration: 0 })
+  try {
+    const canvas = await renderExportCanvas()
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const pageWidth = 210
+    const pageHeight = 297
+    // Slice the tall canvas into A4-sized pieces so each page embeds only its
+    // own strip (embedding the whole image on every page bloats the file).
+    const sliceHeight = Math.floor((canvas.width * pageHeight) / pageWidth)
+    const slice = document.createElement('canvas')
+    slice.width = canvas.width
+    const ctx = slice.getContext('2d')
+    if (!ctx) throw new Error('canvas 2d context unavailable')
+    for (let offset = 0, page = 0; offset < canvas.height; offset += sliceHeight, page += 1) {
+      const height = Math.min(sliceHeight, canvas.height - offset)
+      slice.height = height
+      ctx.fillStyle = '#f6f7f5'
+      ctx.fillRect(0, 0, slice.width, height)
+      ctx.drawImage(canvas, 0, offset, canvas.width, height, 0, 0, canvas.width, height)
+      if (page > 0) pdf.addPage()
+      pdf.addImage(slice.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, pageWidth, (height * pageWidth) / canvas.width)
+    }
+    pdf.save(`${fileStem()}.pdf`)
+    message.success({ content: t('result.toastPdfOk'), key: 'export' })
+  } catch (error: any) {
+    console.error('PDF export failed', error)
+    message.error({ content: t('result.toastPdfFail', { msg: error?.message ?? '' }), key: 'export' })
+  }
+}
+
+function onExport({ key }: { key: string | number }) {
+  if (exporting.value) return
+  if (key === 'image') void exportAsImage()
+  else if (key === 'pdf') void exportAsPDF()
 }
 </script>
 
 <style scoped>
-.result-container {
-  min-height: 100vh;
-  background: #f5f7fa;
-  padding: 28px 24px 48px;
+.empty-state {
+  padding-top: 80px;
+  padding-bottom: 120px;
+  text-align: center;
 }
 
-.page-header {
-  max-width: 1280px;
-  margin: 0 auto 20px;
+.empty-state h1 {
+  margin: 0 0 10px;
+  font-size: 32px;
+}
+
+.empty-state p {
+  color: var(--muted);
+}
+
+.primary-link {
+  display: inline-block;
+  margin-top: 14px;
+  padding: 12px 26px;
+  background: var(--pine);
+  color: #fff;
+  text-decoration: none;
+}
+
+.result-page {
+  padding-top: 36px;
+  padding-bottom: 30px;
+}
+
+.result-heading {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-}
-
-.back-button {
-  border-radius: 8px;
-  font-weight: 600;
-}
-
-.page-header :deep(.ant-btn .anticon) {
-  margin-right: 6px;
-}
-
-/* 内容布局 */
-.content-wrapper {
-  max-width: 1280px;
-  margin: 0 auto;
-  display: flex;
+  align-items: flex-end;
   gap: 20px;
+  margin-bottom: 18px;
 }
 
-.side-nav {
-  width: 240px;
-  flex-shrink: 0;
-}
-
-.side-nav :deep(.ant-menu) {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-}
-
-.side-nav :deep(.ant-menu-item) {
-  margin: 4px 8px;
-  border-radius: 8px;
-  transition: all 0.3s ease;
-}
-
-.side-nav :deep(.ant-menu-item-selected) {
-  background: #eaf3ff;
-  color: #0958d9;
-}
-
-.side-nav :deep(.ant-menu-item:hover) {
-  background: #f0f6ff;
-  color: #0958d9;
-}
-
-.main-content {
-  flex: 1;
+.heading-text {
   min-width: 0;
 }
 
-/* 景点图片样式 */
-.attraction-image-wrapper {
-  position: relative;
-  margin-bottom: 12px;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.attraction-image {
-  width: 100%;
-  height: 200px;
-  object-fit: cover;
-  transition: transform 0.3s ease;
-}
-
-.attraction-image-wrapper:hover .attraction-image {
-  transform: scale(1.05);
-}
-
-.attraction-badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: #1677ff;
-  color: white;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.badge-number {
-  font-size: 18px;
-}
-
-.price-tag {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: rgba(15, 23, 42, 0.82);
-  color: white;
-  padding: 4px 12px;
-  border-radius: 999px;
-  font-weight: bold;
-  font-size: 14px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-/* 天气卡片样式 */
-.weather-card {
-  background: #f8fafc;
-  border: none !important;
-  transition: all 0.3s ease;
-}
-
-.weather-card-sun {
-  background: #fff7ed;
-}
-
-.weather-card-cloud {
-  background: #f0f6ff;
-}
-
-.weather-card-rain {
-  background: #e0f2fe;
-}
-
-.weather-card-snow {
-  background: #f8fafc;
-}
-
-.weather-card-haze {
-  background: #f5f5f4;
-}
-
-.weather-card-unknown {
-  background: #f8fafc;
-}
-
-.weather-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.1);
-}
-
-.weather-date {
-  font-size: 16px;
-  font-weight: bold;
-  color: #0f172a;
-  margin-bottom: 12px;
-  text-align: center;
-}
-
-.weather-info-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.weather-icon {
-  font-size: 24px;
-  width: 30px;
-  text-align: center;
-}
-
-.weather-label {
+.trip-caption {
+  margin: 0 0 10px;
+  color: var(--muted);
   font-size: 12px;
-  color: #666;
 }
 
-.weather-value {
-  font-size: 16px;
-  font-weight: 600;
-  color: #0f172a;
+.result-heading h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 40px;
+  line-height: 1.35;
+  letter-spacing: 1px;
+  outline: none;
+  overflow-wrap: anywhere;
 }
 
-.weather-wind {
+.trip-meta {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ghost-button,
+.solid-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 8px 16px;
+  border: 1px solid #b8c8bb;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ghost-button:hover:not(:disabled) {
+  background: #e8eee8;
+}
+
+.ghost-button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.solid-button {
+  border-color: var(--pine);
+  background: var(--pine);
+  color: #fff;
+}
+
+.chevron {
+  width: 12px;
+  height: 12px;
+}
+
+.plan-notice {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-left: 2px solid var(--hotel);
+  background: #f3ebe6;
+  color: #5d3a2f;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.plan-notice p {
+  margin: 2px 0 0;
+}
+
+.suggestions {
+  max-width: 920px;
+  margin: 0 0 24px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.85;
+}
+
+.suggestions-label {
+  margin-right: 8px;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.result-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 58px;
+}
+
+.itinerary,
+.trip-sidebar {
+  min-width: 0;
+}
+
+.trip-sidebar {
+  align-self: start;
+}
+
+@media (min-width: 761px) and (min-height: 860px) {
+  .trip-sidebar {
+    position: sticky;
+    top: 16px;
+  }
+}
+
+.day-panel {
+  scroll-margin-top: 70px;
+  outline: none;
+}
+
+.day-intro {
+  padding: 22px 0 8px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+}
+
+.section-heading > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.day-intro h2 {
+  margin-bottom: 8px;
+  font-size: 26px;
+  letter-spacing: 1px;
+}
+
+.day-intro p {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.85;
+}
+
+.day-transport {
+  font-size: 12px !important;
+}
+
+.editing-hint {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  background: #e8eee5;
+  color: var(--pine);
+  font-size: 12px;
+}
+
+.poi-section {
+  margin-top: 24px;
+  padding-top: 21px;
+  border-top: 1px solid var(--line);
+}
+
+.poi-section.first {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(15, 23, 42, 0.12);
-  text-align: center;
-  color: #475569;
-  font-size: 14px;
+  border-top: 0;
 }
 
-/* 回到顶部按钮 */
-.back-top-button {
-  width: 50px;
-  height: 50px;
-  background: #1677ff;
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  font-weight: bold;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  cursor: pointer;
-  transition: all 0.3s ease;
+.poi-section > .section-heading {
+  margin-bottom: 13px;
+  font-size: 22px;
+  letter-spacing: 0.5px;
 }
 
-.back-top-button:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-}
-
-/* 酒店卡片样式 */
-.hotel-card {
-  border: 1px solid #e5e7eb !important;
-  background: #ffffff;
-}
-
-.hotel-card :deep(.ant-card-head) {
-  background: #f8fafc;
-}
-
-.hotel-title {
-  color: #0f172a !important;
-  font-weight: 700;
-}
-
-/* 顶部信息区布局 */
-.top-info-section {
-  display: flex;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.left-info {
-  flex: 0 0 400px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.right-map {
-  flex: 1;
-}
-
-/* 行程概览卡片 */
-.overview-card {
-  height: fit-content;
-}
-
-.overview-content {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.info-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #666;
-}
-
-.info-value {
-  font-size: 15px;
-  color: #333;
-  line-height: 1.6;
-}
-
-/* 预算卡片 */
-.budget-card {
-  height: fit-content;
-}
-
-.budget-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.budget-item {
-  text-align: center;
-  padding: 12px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-}
-
-.budget-label {
-  font-size: 13px;
-  color: #666;
-  margin-bottom: 8px;
-}
-
-.budget-value {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1677ff;
-}
-
-.budget-total {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  background: #1677ff;
-  border-radius: 8px;
-  color: white;
-}
-
-.total-label {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.total-value {
-  font-size: 28px;
-  font-weight: 700;
-}
-
-/* 地图卡片 */
-.map-card {
-  height: 100%;
-  min-height: 500px;
-}
-
-.map-card :deep(.ant-card-body) {
-  height: calc(100% - 57px);
+.timeline {
+  list-style: none;
+  margin: 0;
   padding: 0;
 }
 
-.map-shell {
+.stop {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.stop:last-child {
+  border-bottom: 0;
+}
+
+.stop-index {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: var(--attraction);
+  color: #fff;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stop-body {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+}
+
+.stop.selected .stop-body,
+.poi-card.selected,
+.meal-row.selected {
+  background: #edf2e9;
+  box-shadow: 0 0 0 6px #edf2e9;
+}
+
+.stop-media {
   position: relative;
-  width: 100%;
-  height: 100%;
-  min-height: 320px;
+  width: 148px;
+  height: 108px;
   overflow: hidden;
-  border-radius: 0 0 8px 8px;
+  background: #e5eae4;
 }
 
-.amap-container {
+.stop-media img {
+  display: block;
   width: 100%;
   height: 100%;
-  min-height: inherit;
+  object-fit: cover;
 }
 
-.map-legend {
+.stock-tag {
   position: absolute;
-  left: 12px;
-  bottom: 12px;
-  z-index: 2;
+  left: 0;
+  bottom: 0;
+  padding: 1px 6px;
+  background: rgba(36, 52, 44, 0.72);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.photo-placeholder {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
   align-items: center;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  border-radius: 8px;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
-  color: #334155;
+  justify-content: center;
+  gap: 4px;
+  height: 100%;
+  color: #8a978c;
+  font-size: 11px;
+}
+
+.photo-placeholder svg {
+  width: 26px;
+  height: 26px;
+}
+
+.stop-text {
+  min-width: 0;
+}
+
+.stop-text h3,
+.poi-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.facts {
+  margin: 2px 0 0;
+  color: #5b7560;
+  font-size: 11px;
+}
+
+.address,
+.summary {
+  margin: 5px 0 0;
+  color: var(--muted);
   font-size: 12px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
 }
 
-.map-legend.compact {
+.edit-fields {
+  display: grid;
   gap: 8px;
-  padding: 6px 8px;
+  margin-top: 8px;
 }
 
-.map-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+.edit-fields label {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.edit-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.edit-controls button {
+  min-height: 30px;
+  padding: 3px 10px;
+  border: 1px solid #b8c8bb;
+  background: transparent;
+  color: var(--ink);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.edit-controls button:disabled {
+  color: #aab4ab;
+  cursor: default;
+}
+
+.edit-controls .danger {
+  border-color: #c9a59a;
+  color: #8a3d2e;
+}
+
+.poi-card {
+  min-width: 0;
+  padding: 17px 18px;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.poi-topline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.poi-badge {
+  padding: 1px 6px;
+  border: 1px solid #c8c6b8;
+  color: var(--hotel);
+  font-size: 10px;
+  line-height: 1.8;
+}
+
+.poi-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin: 12px 0 4px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.poi-facts div {
+  min-width: 0;
+}
+
+.poi-facts dt {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.poi-facts dd {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.poi-cost {
+  color: #6e5543;
+  font-size: 12px;
   white-space: nowrap;
 }
 
-.legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
+.poi-empty,
+.map-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
 }
 
-.legend-hotel {
-  background: #ef4444;
+.map-note {
+  font-size: 11px;
 }
 
-.legend-attraction {
-  background: #1677ff;
+.meal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
 }
 
-.legend-meal {
-  background: #f59e0b;
-}
-
-.map-empty-state {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(248, 250, 252, 0.86);
-  color: #64748b;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.daily-maps-card {
-  margin-top: 20px;
-}
-
-.daily-map-grid {
+.meal-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: minmax(46px, max-content) minmax(0, 1fr);
+  gap: 14px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
 }
 
-.daily-map-panel {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #ffffff;
-}
-
-.daily-map-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid #edf0f5;
-  background: #f8fafc;
-}
-
-.daily-map-title {
-  color: #0f172a;
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.daily-map-date {
-  margin-top: 2px;
-  color: #64748b;
+.meal-type {
+  padding-top: 3px;
+  color: var(--meal);
   font-size: 12px;
 }
 
-.daily-map-count {
-  flex-shrink: 0;
-  padding: 4px 8px;
-  border: 1px solid #dbeafe;
-  border-radius: 999px;
-  background: #eff6ff;
-  color: #0958d9;
-  font-size: 12px;
-  font-weight: 600;
+.meal-body {
+  min-width: 0;
 }
 
-.daily-map-shell {
-  height: 320px;
-  min-height: 320px;
-  border-radius: 0;
+.meal-body .poi-title {
+  font-size: 15px;
 }
 
-/* 每日行程卡片 */
-.days-card {
-  margin-top: 20px;
-}
-
-.day-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
-
-.day-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #333;
-}
-
-.day-date {
-  font-size: 14px;
-  color: #999;
-}
-
-.day-info {
-  margin-bottom: 20px;
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-}
-
-.info-row {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.info-row:last-child {
-  margin-bottom: 0;
-}
-
-.info-row .label {
-  font-weight: 600;
-  color: #475569;
-  min-width: 100px;
-}
-
-.info-row .value {
-  color: #0f172a;
-  flex: 1;
-}
-
-/* 卡片样式优化 */
-:deep(.ant-card) {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-  margin-bottom: 20px;
-  transition: box-shadow 0.2s ease;
-}
-
-:deep(.ant-card:hover) {
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
-}
-
-:deep(.ant-card-head) {
-  background: #ffffff;
-  color: #0f172a !important;
-  border-bottom: 1px solid #edf0f5;
-  border-radius: 8px 8px 0 0;
-  font-weight: 700;
-}
-
-:deep(.ant-card-head-title) {
-  color: #0f172a !important;
-  font-size: 17px;
-}
-
-:deep(.ant-card-head-title span) {
-  color: #0f172a !important;
-}
-
-/* Collapse样式 */
-:deep(.ant-collapse) {
-  border: none;
-  background: transparent;
-}
-
-:deep(.ant-collapse-item) {
-  margin-bottom: 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-:deep(.ant-collapse-header) {
-  background: #f8fafc;
-  padding: 16px 20px !important;
-  font-weight: 600;
-}
-
-:deep(.ant-collapse-content) {
-  border-top: 1px solid #e5e7eb;
-}
-
-:deep(.ant-collapse-content-box) {
-  padding: 20px;
-}
-
-/* 统计卡片样式 */
-:deep(.ant-statistic-title) {
-  font-size: 14px;
-  color: #666;
-  margin-bottom: 8px;
-}
-
-:deep(.ant-statistic-content) {
-  font-size: 24px;
-  font-weight: 600;
-  color: #1677ff;
-}
-
-/* 景点卡片样式 */
-:deep(.ant-list-item) {
-  transition: all 0.3s ease;
-}
-
-:deep(.ant-list-item:hover) {
-  transform: none;
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .result-container {
-    padding: 20px 10px;
+@media (max-width: 1100px) {
+  .result-layout {
+    gap: 30px;
   }
 
-  .page-header {
+  .result-heading h1 {
+    font-size: 34px;
+  }
+
+  .stop-body {
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+
+  .stop-media {
+    width: 112px;
+    height: 84px;
+  }
+}
+
+@media (max-width: 760px) {
+  .result-page {
+    padding-top: 22px;
+  }
+
+  .result-heading {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .heading-actions {
+    justify-content: flex-start;
+  }
+
+  .result-heading h1 {
+    font-size: 28px;
+    letter-spacing: 0;
+  }
+
+  .trip-meta {
+    font-size: 11px;
+    line-height: 1.8;
+  }
+
+  .result-layout {
+    display: flex;
     flex-direction: column;
     gap: 16px;
   }
 
-  .content-wrapper {
-    display: block;
+  .trip-sidebar {
+    position: static;
+    width: 100%;
   }
 
-  .side-nav {
-    display: none;
+  .day-intro h2 {
+    font-size: 23px;
   }
 
-  .top-info-section {
-    flex-direction: column;
+  .poi-section > .section-heading {
+    font-size: 20px;
   }
 
-  .left-info {
-    flex: 1;
+  .stop {
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 10px;
   }
 
-  .map-card {
-    min-height: 360px;
+  .stop-index {
+    width: 22px;
+    height: 22px;
   }
 
-  .daily-map-grid {
-    grid-template-columns: 1fr;
+  .stop-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
   }
 
-  .map-legend {
-    flex-wrap: wrap;
-    right: 12px;
+  .stop-media {
+    width: 100%;
+    height: 150px;
+  }
+
+  .poi-card {
+    padding: 14px;
+  }
+
+  .poi-facts {
+    gap: 9px 14px;
+  }
+
+  .meal-row {
+    grid-template-columns: minmax(38px, max-content) minmax(0, 1fr);
+    gap: 10px;
   }
 }
 </style>

@@ -60,7 +60,45 @@ export interface StreamEvent {
   message?: string
   status?: string
   success?: boolean
-  data?: TripPlan
+  data?: TripPlan | null
+}
+
+/**
+ * Why a streamed planning run did not produce a usable plan.
+ * - http: non-2xx response or no body
+ * - network: fetch / read failed (offline, connection dropped mid-stream)
+ * - sse: the server sent an `error` frame
+ * - failed: a `result` frame with success=false or without a usable plan
+ * - no_result: the stream closed before any result frame
+ * - aborted: the caller aborted via AbortSignal (local only; the server run is not cancelled)
+ */
+export type StreamErrorKind = 'http' | 'network' | 'sse' | 'failed' | 'no_result' | 'aborted'
+
+export class StreamError extends Error {
+  readonly kind: StreamErrorKind
+  readonly status?: number
+
+  constructor(kind: StreamErrorKind, message: string, status?: number) {
+    super(message)
+    this.name = 'StreamError'
+    this.kind = kind
+    this.status = status
+  }
+}
+
+export interface StreamOptions {
+  /** Abort the local fetch. This does not cancel the planning run on the server. */
+  signal?: AbortSignal
+}
+
+/** A result frame's plan is usable only if it looks like a TripPlan with days. */
+export function isUsablePlan(plan: unknown): plan is TripPlan {
+  return (
+    !!plan &&
+    typeof plan === 'object' &&
+    Array.isArray((plan as TripPlan).days) &&
+    (plan as TripPlan).days.length > 0
+  )
 }
 
 // Parse one raw SSE frame ("event: ...\ndata: {json}") into its JSON payload.
@@ -79,55 +117,87 @@ function parseSseFrame(frame: string): StreamEvent | null {
   }
 }
 
+function isAbort(error: unknown, signal?: AbortSignal): boolean {
+  return !!signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')
+}
+
 /**
  * Generate a trip plan while streaming progress over SSE.
  *
  * Calls `onEvent` for every frame (progress/result/error) and resolves with the
- * final TripPlan carried by the terminal `result` frame.
+ * TripPlan carried by the first successful `result` frame once the stream ends.
+ * Rejects with a StreamError for every failure path. Note: the axios timeout
+ * above does not apply here; this uses fetch and has no client-side deadline.
  */
 export async function streamTripPlan(
   formData: TripFormData,
-  onEvent: (event: StreamEvent) => void
+  onEvent: (event: StreamEvent) => void,
+  options: StreamOptions = {}
 ): Promise<TripPlan> {
-  const response = await fetch(`${API_BASE_URL}/api/trip/plan/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(formData)
-  })
+  const { signal } = options
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}/api/trip/plan/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData),
+      signal
+    })
+  } catch (error) {
+    if (isAbort(error, signal)) throw new StreamError('aborted', 'Request aborted')
+    throw new StreamError('network', (error as Error)?.message || 'Network error')
+  }
 
   if (!response.ok || !response.body) {
-    throw new Error(`Stream request failed: ${response.status}`)
+    throw new StreamError('http', `Stream request failed: ${response.status}`, response.status)
   }
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
   let result: TripPlan | null = null
+  let sawResult = false
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-
-    // SSE frames are separated by a blank line; keep the trailing partial frame.
-    const frames = buffer.split('\n\n')
-    buffer = frames.pop() ?? ''
-
-    for (const frame of frames) {
-      const event = parseSseFrame(frame)
-      if (!event) continue
-      onEvent(event)
-      if (event.type === 'error') {
-        throw new Error(event.message || 'Stream reported an error')
+  const handleFrame = (frame: string) => {
+    const event = parseSseFrame(frame)
+    if (!event) return
+    // Ignore anything after the first result frame (duplicates, stray progress).
+    if (sawResult) return
+    onEvent(event)
+    if (event.type === 'error') {
+      throw new StreamError('sse', event.message || 'Stream reported an error')
+    }
+    if (event.type === 'result') {
+      sawResult = true
+      if (event.success === false || !isUsablePlan(event.data)) {
+        throw new StreamError('failed', event.message || 'The planner returned no usable plan')
       }
-      if (event.type === 'result' && event.data) {
-        result = event.data
-      }
+      result = event.data
     }
   }
 
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      // SSE frames are separated by a blank line; keep the trailing partial frame.
+      const frames = buffer.replace(/\r\n/g, '\n').split('\n\n')
+      buffer = frames.pop() ?? ''
+      for (const frame of frames) handleFrame(frame)
+    }
+    buffer += decoder.decode()
+    if (buffer.trim()) handleFrame(buffer)
+  } catch (error) {
+    reader.cancel().catch(() => {})
+    if (error instanceof StreamError) throw error
+    if (isAbort(error, signal)) throw new StreamError('aborted', 'Request aborted')
+    throw new StreamError('network', (error as Error)?.message || 'Connection lost')
+  }
+
   if (!result) {
-    throw new Error('Stream ended without a result')
+    throw new StreamError('no_result', 'Stream ended without a result')
   }
   return result
 }

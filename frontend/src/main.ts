@@ -15,11 +15,23 @@ const router = createRouter({
       component: Home
     },
     {
+      // `?day=N` (1-based) selects the visible day; see Result.vue.
       path: '/result',
       name: 'Result',
       component: Result
+    },
+    {
+      path: '/credits',
+      name: 'Credits',
+      component: () => import('./views/Credits.vue')
     }
-  ]
+  ],
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition
+    // Switching days only changes the query; keep the reader where they are.
+    if (to.path === from.path) return false
+    return { top: 0 }
+  }
 })
 
 const app = createApp(App)
