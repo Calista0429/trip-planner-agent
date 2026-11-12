@@ -145,7 +145,8 @@ const zh: Messages = {
     errSse: '规划服务报告了错误：{message}',
     errAborted: '请求已停止。',
     errKept: '表单内容已保留，可以修改条件后重新生成。',
-    retry: '重新生成'
+    retry: '重新生成',
+    backToEdit: '返回修改'
   },
   carousel: {
     region: '目的地灵感',
@@ -443,7 +444,8 @@ const en: Messages = {
     errSse: 'The planner reported an error: {message}',
     errAborted: 'The request was stopped.',
     errKept: 'Your form is kept. Adjust it if needed and generate again.',
-    retry: 'Generate again'
+    retry: 'Generate again',
+    backToEdit: 'Back to edit'
   },
   carousel: {
     region: 'Destination inspiration',

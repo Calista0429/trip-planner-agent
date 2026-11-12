@@ -23,6 +23,7 @@ vi.mock('@/services/api', async (importOriginal) => {
 const { StreamError } = await import('@/services/api')
 const { default: Home } = await import('@/views/Home.vue')
 const { HANDOFF_DELAY_MS } = await import('@/composables/useTripPlanRun')
+const { routeTransition, clearRouteTransition } = await import('@/services/routeTransition')
 
 beforeAll(() => {
   // jsdom lacks these; Ant Design and the carousel query them.
@@ -67,6 +68,7 @@ async function submit(wrapper: Awaited<ReturnType<typeof mountHome>>['wrapper'])
 }
 
 beforeEach(() => {
+  clearRouteTransition()
   calls.length = 0
   sessionStorage.clear()
   sessionStorage.setItem('tripRequest', JSON.stringify(sampleRequest))
@@ -86,6 +88,11 @@ describe('Home.vue with the journey ticket', () => {
     expect(calls[0].request).toEqual(sampleRequest)
     await flushPromises()
     expect(wrapper.find('.journey-ticket').exists()).toBe(true)
+    const dialog = wrapper.find('[role="dialog"]')
+    expect(dialog.attributes('aria-modal')).toBe('true')
+    expect(dialog.attributes('aria-labelledby')).toBe(wrapper.find('.ticket-title').attributes('id'))
+    expect(wrapper.find('section.home-layout').attributes('inert')).toBeDefined()
+    expect(document.documentElement.style.overflow).toBe('hidden')
     expect(wrapper.find('.ticket-summary').text()).toContain('杭州市')
     expect(wrapper.find('button.primary').attributes('disabled')).toBeDefined()
 
@@ -107,11 +114,14 @@ describe('Home.vue with the journey ticket', () => {
     expect(JSON.parse(sessionStorage.getItem('tripPlanMeta')!)).toEqual({ status: 'llm_success', message: 'ok', switchedModel: false })
     expect(wrapper.find('.ticket-title').text()).toBe('行程已准备好')
     expect(push).not.toHaveBeenCalled()
+    expect(routeTransition.value).toBe('')
 
     await new Promise((r) => setTimeout(r, HANDOFF_DELAY_MS + 50))
     expect(push).toHaveBeenCalledTimes(1)
     expect(push).toHaveBeenCalledWith({ path: '/result', query: { day: '1' } })
+    expect(routeTransition.value).toBe('trip-reveal')
     wrapper.unmount()
+    expect(document.documentElement.style.overflow).toBe('')
   })
 
   it('keeps the error and the form after a failure, then retries manually as a new run', async () => {
@@ -141,6 +151,25 @@ describe('Home.vue with the journey ticket', () => {
     calls[0].emit({ type: 'progress', phase: 'reranking' })
     await flushPromises()
     expect(wrapper.find('.ticket-title').text()).toBe('正在查找旅行资料')
+    wrapper.unmount()
+  })
+
+  it('"back to edit" closes the overlay, unlocks the page and focuses the submit button', async () => {
+    const { wrapper } = await mountHome()
+    await submit(wrapper)
+    calls[0].reject(new StreamError('no_result', 'ended'))
+    await flushPromises()
+    expect(wrapper.find('[role="alert"]').text()).toContain('连接在返回行程之前结束了')
+    expect(document.activeElement?.classList.contains('ticket-retry')).toBe(true)
+
+    await wrapper.find('.ticket-edit').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    expect(wrapper.find('section.home-layout').attributes('inert')).toBeUndefined()
+    expect(document.documentElement.style.overflow).toBe('')
+    expect(document.activeElement).toBe(wrapper.find('button.primary').element)
+    expect(wrapper.find('button.primary').attributes('disabled')).toBeUndefined()
+    expect(calls).toHaveLength(1)
     wrapper.unmount()
   })
 

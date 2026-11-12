@@ -103,9 +103,12 @@ describe('TripTicketProgress', () => {
     expect(alert.text()).toContain('HTTP 502')
     expect(alert.text()).toContain('表单内容已保留')
     expect(w.find('[role="status"]').text()).toBe('')
+    expect(w.find('.ticket-edit').text()).toBe('返回修改')
     expect(states(w)).toEqual(['complete', 'error', 'pending', 'pending'])
     await w.find('.ticket-retry').trigger('click')
     expect(w.emitted('retry')).toHaveLength(1)
+    await w.find('.ticket-edit').trigger('click')
+    expect(w.emitted('edit')).toHaveLength(1)
   })
 
   it('switches every string to English', () => {

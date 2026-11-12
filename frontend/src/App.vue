@@ -33,7 +33,12 @@
       </header>
 
       <main id="main" class="app-main" tabindex="-1">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <!-- Only the planning hand-off sets a transition name; other navigation stays instant. -->
+          <transition :name="routeTransition || 'route-none'" mode="out-in" @after-enter="clearRouteTransition">
+            <component :is="Component" />
+          </transition>
+        </router-view>
       </main>
 
       <footer class="shell page-foot">
@@ -48,6 +53,7 @@
 import { useRoute } from 'vue-router'
 import { antdLocale, locale, setLocale, t, type Locale } from '@/i18n'
 import { antdTheme } from '@/styles/theme'
+import { clearRouteTransition, routeTransition } from '@/services/routeTransition'
 
 const route = useRoute()
 
@@ -59,6 +65,35 @@ const langOptions: { label: string; value: Locale; lang: string }[] = [
 
 <style>
 @import './styles/base.css';
+
+/* Planning overlay → result page: the ticket screen fades out, the itinerary rises in. */
+.trip-reveal-leave-active {
+  transition: opacity 0.32s ease;
+}
+
+.trip-reveal-leave-to {
+  opacity: 0;
+}
+
+.trip-reveal-enter-active {
+  transition: opacity 0.45s ease, transform 0.55s cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+.trip-reveal-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trip-reveal-enter-active,
+  .trip-reveal-leave-active {
+    transition: opacity 0.15s linear;
+  }
+
+  .trip-reveal-enter-from {
+    transform: none;
+  }
+}
 </style>
 
 <style scoped>

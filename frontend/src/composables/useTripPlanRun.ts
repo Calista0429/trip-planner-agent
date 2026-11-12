@@ -24,10 +24,17 @@ export interface TripPlanRunDeps {
   onSettled?: (outcome: 'success' | 'fallback') => void
   onFailed?: (error: StreamError) => void
   now?: () => number
+  /** How long the settled ticket stays up before navigating (ms). */
+  handoffDelay?: () => number
 }
 
-/** Short pause so the final seal can land; the plan is already saved by then. */
-export const HANDOFF_DELAY_MS = 450
+/**
+ * Pause after a valid result so the last seals land before the transition to
+ * the result page. The plan is already saved by then; this never gates success.
+ */
+export const HANDOFF_DELAY_MS = 1000
+/** Hand-off pause when the user prefers reduced motion. */
+export const HANDOFF_DELAY_REDUCED_MS = 250
 /** The elapsed display refreshes this often; it never advances the steps. */
 export const TICK_MS = 1000
 
@@ -137,7 +144,7 @@ export function useTripPlanRun(overrides: Partial<TripPlanRunDeps> & Pick<TripPl
         handoffTimer = null
         if (stale()) return
         deps.navigate()
-      }, HANDOFF_DELAY_MS)
+      }, deps.handoffDelay?.() ?? HANDOFF_DELAY_MS)
     } catch (error) {
       if (stale()) return
       const err =

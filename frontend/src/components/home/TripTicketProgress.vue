@@ -12,7 +12,7 @@
         </p>
 
         <div class="ticket-main-copy">
-          <h2 class="ticket-title">{{ title }}</h2>
+          <h2 :id="titleId" class="ticket-title">{{ title }}</h2>
           <div v-if="state.status === 'error'" class="ticket-detail ticket-error" role="alert">
             <p>{{ errorText }}</p>
             <p class="ticket-error-hint">{{ t('progress.errKept') }}</p>
@@ -60,6 +60,7 @@
       </div>
 
       <div v-if="state.status === 'error'" class="ticket-actions">
+        <button type="button" class="ticket-edit" @click="emit('edit')">{{ t('progress.backToEdit') }}</button>
         <button type="button" class="ticket-retry" @click="emit('retry')">{{ t('progress.retry') }}</button>
       </div>
     </article>
@@ -89,11 +90,13 @@ const props = withDefaults(
     now: number
     /** Short facts from the submitted request, e.g. city / dates / days / party. */
     summary?: string[]
+    /** id for the title, so a surrounding dialog can point aria-labelledby at it. */
+    titleId?: string
   }>(),
-  { summary: () => [] }
+  { summary: () => [], titleId: undefined }
 )
 
-const emit = defineEmits<{ retry: [] }>()
+const emit = defineEmits<{ retry: []; edit: [] }>()
 
 const NAME_KEYS = ['stepResearch', 'stepRoute', 'stepItinerary', 'stepReview'] as const
 const SEAL_KEYS = ['sealResearch', 'sealRoute', 'sealItinerary', 'sealReview'] as const
@@ -622,11 +625,14 @@ const announcement = computed(() => {
 
 .ticket-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 10px;
   padding: 0 28px 20px;
   margin-top: -6px;
 }
 
+.ticket-edit,
 .ticket-retry {
   min-height: 36px;
   padding: 0 16px;
@@ -637,10 +643,25 @@ const announcement = computed(() => {
   cursor: pointer;
 }
 
-.ticket-retry:hover {
+.ticket-edit {
+  border-color: #c2cec0;
+  color: var(--muted, #67766b);
+}
+
+.ticket-retry {
+  background: var(--pine, #315348);
+  color: #fff;
+}
+
+.ticket-edit:hover {
   background: #edf2eb;
 }
 
+.ticket-retry:hover {
+  background: var(--pine-dark, #264238);
+}
+
+.ticket-edit:focus-visible,
 .ticket-retry:focus-visible {
   outline: 2px solid var(--pine, #315348);
   outline-offset: 3px;

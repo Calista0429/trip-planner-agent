@@ -1,201 +1,204 @@
 <template>
-  <section class="shell home-layout" aria-labelledby="home-title">
-    <div class="home-copy">
-      <div class="home-heading">
-        <p class="trip-caption">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" focusable="false">
-            <path d="M20 10c0 6-8 11-8 11S4 16 4 10a8 8 0 1 1 16 0Z" />
-            <circle cx="12" cy="10" r="2.5" />
-          </svg>
-          {{ t('home.caption') }}
-        </p>
-        <h1 id="home-title" class="serif">{{ t('home.title') }}</h1>
-        <p class="intro">{{ t('home.intro') }}</p>
-      </div>
-
-      <a-form
-        ref="formRef"
-        class="planner-form"
-        layout="vertical"
-        :model="formData"
-        :required-mark="false"
-        @finish="handleSubmit"
-      >
-        <div class="field-grid">
-          <!-- Destination: province first, then a city limited to that province.
-               The submitted `city` is always the official Chinese name. -->
-          <a-form-item class="field" :label="t('home.labelProvince')" html-for="province-select">
-            <a-select
-              id="province-select"
-              v-model:value="provinceCode"
-              show-search
-              :placeholder="t('home.placeholderProvince')"
-              :options="provinceOptions"
-              :filter-option="filterRegion"
-              :disabled="loading"
-              :not-found-content="t('home.noMatch')"
-              @change="onProvinceChange"
-            />
-          </a-form-item>
-
-          <a-form-item
-            class="field"
-            name="city"
-            :label="t('home.labelCity')"
-            :rules="[{ required: true, message: t('home.ruleCity') }]"
-            :extra="regionNote"
-          >
-            <a-select
-              v-model:value="cityValue"
-              show-search
-              :placeholder="selectedProvince ? t('home.placeholderCity') : t('home.pickProvinceFirst')"
-              :options="cityOptions"
-              :filter-option="filterRegion"
-              :disabled="loading || !selectedProvince"
-              :not-found-content="t('home.noMatch')"
-            />
-          </a-form-item>
-
-          <a-form-item
-            class="field"
-            name="start_date"
-            :label="t('home.labelStartDate')"
-            :rules="[{ required: true, message: t('home.ruleStartDate') }]"
-          >
-            <a-date-picker
-              v-model:value="formData.start_date"
-              :placeholder="t('home.placeholderDate')"
-              format="YYYY-MM-DD"
-              :disabled="loading"
-              style="width: 100%"
-            />
-          </a-form-item>
-
-          <a-form-item
-            class="field"
-            name="end_date"
-            :label="t('home.labelEndDate')"
-            :rules="[{ required: true, message: t('home.ruleEndDate') }]"
-            :extra="tripLengthText"
-          >
-            <a-date-picker
-              v-model:value="formData.end_date"
-              :placeholder="t('home.placeholderDate')"
-              format="YYYY-MM-DD"
-              :disabled-date="disabledEndDate"
-              :disabled="loading"
-              style="width: 100%"
-            />
-          </a-form-item>
-
-          <a-form-item class="field" :name="['party', 'adults']" :label="t('home.labelAdults')" :extra="partyText">
-            <a-input-number
-              v-model:value="formData.party.adults"
-              :min="0"
-              :max="20"
-              :precision="0"
-              :disabled="loading"
-              style="width: 100%"
-            />
-          </a-form-item>
-
-          <a-form-item class="field" :name="['budget_constraint', 'amount']" :label="t('home.labelBudget')">
-            <a-input-number
-              v-model:value="formData.budget_constraint.amount"
-              :min="0"
-              :step="100"
-              :precision="0"
-              :placeholder="t('home.placeholderBudget')"
-              :aria-label="t('home.budgetAria')"
-              :disabled="loading"
-              prefix="¥"
-              style="width: 100%"
-            />
-          </a-form-item>
+  <div class="home-page">
+    <section class="shell home-layout" aria-labelledby="home-title" :inert="overlayOpen || undefined">
+      <div class="home-copy">
+        <div class="home-heading">
+          <p class="trip-caption">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" focusable="false">
+              <path d="M20 10c0 6-8 11-8 11S4 16 4 10a8 8 0 1 1 16 0Z" />
+              <circle cx="12" cy="10" r="2.5" />
+            </svg>
+            {{ t('home.caption') }}
+          </p>
+          <h1 id="home-title" class="serif">{{ t('home.title') }}</h1>
+          <p class="intro">{{ t('home.intro') }}</p>
         </div>
 
-        <div class="constraint">
-          <a-checkbox v-model:checked="strictBudget" :disabled="loading || !hasBudgetAmount">
-            {{ t('home.strictBudget') }}
-          </a-checkbox>
-          <span class="constraint-mode" aria-live="polite">
-            {{ hasBudgetAmount ? budgetModeText : t('home.strictNeedsAmount') }}
-          </span>
-        </div>
-
-        <div class="options">
-          <button
-            type="button"
-            class="options-toggle"
-            :aria-expanded="optionsOpen"
-            aria-controls="more-options"
-            @click="optionsOpen = !optionsOpen"
-          >
-            <span>{{ t('home.moreOptions') }}</span>
-            <span class="options-sign" aria-hidden="true">{{ optionsOpen ? '−' : '＋' }}</span>
-          </button>
-          <!-- v-show keeps every field mounted so collapsed values are still submitted. -->
-          <div v-show="optionsOpen" id="more-options" class="option-fields">
-            <a-form-item class="field" :name="['party', 'children']" :label="t('home.labelChildren')">
-              <a-input-number v-model:value="formData.party.children" :min="0" :max="20" :precision="0" :disabled="loading" style="width: 100%" />
-            </a-form-item>
-            <a-form-item class="field" :name="['party', 'elders']" :label="t('home.labelElders')">
-              <a-input-number v-model:value="formData.party.elders" :min="0" :max="20" :precision="0" :disabled="loading" style="width: 100%" />
-            </a-form-item>
-            <a-form-item class="field" :name="['party', 'companion_type']" :label="t('home.labelCompanion')">
-              <a-select v-model:value="formData.party.companion_type" :options="companionTypeOptions" :disabled="loading" />
-            </a-form-item>
-            <a-form-item class="field" :name="['budget_constraint', 'budget_level']" :label="t('home.labelBudgetLevel')">
-              <a-select v-model:value="formData.budget_constraint.budget_level" :options="budgetLevelOptions" :disabled="loading" />
-            </a-form-item>
-            <a-form-item class="field" name="transportation" :label="t('home.labelTransportation')">
-              <a-select v-model:value="formData.transportation" :options="transportationOptions" :disabled="loading" />
-            </a-form-item>
-            <a-form-item class="field" name="accommodation" :label="t('home.labelAccommodation')">
-              <a-select v-model:value="formData.accommodation" :options="accommodationOptions" :disabled="loading" />
-            </a-form-item>
-            <a-form-item class="field wide" name="preferences" :label="t('home.labelPreferences')">
-              <a-checkbox-group v-model:value="formData.preferences" class="preference" :disabled="loading">
-                <a-checkbox v-for="option in preferenceOptions" :key="option.value" :value="option.value">
-                  {{ option.label }}
-                </a-checkbox>
-              </a-checkbox-group>
-            </a-form-item>
-            <a-form-item class="field wide" name="free_text_input" :label="t('home.labelExtra')">
-              <a-textarea
-                v-model:value="formData.free_text_input"
-                :placeholder="t('home.placeholderExtra')"
-                :auto-size="{ minRows: 2, maxRows: 5 }"
+        <a-form
+          ref="formRef"
+          class="planner-form"
+          layout="vertical"
+          :model="formData"
+          :required-mark="false"
+          @finish="handleSubmit"
+        >
+          <div class="field-grid">
+            <!-- Destination: province first, then a city limited to that province.
+                 The submitted `city` is always the official Chinese name. -->
+            <a-form-item class="field" :label="t('home.labelProvince')" html-for="province-select">
+              <a-select
+                id="province-select"
+                v-model:value="provinceCode"
+                show-search
+                :placeholder="t('home.placeholderProvince')"
+                :options="provinceOptions"
+                :filter-option="filterRegion"
                 :disabled="loading"
+                :not-found-content="t('home.noMatch')"
+                @change="onProvinceChange"
+              />
+            </a-form-item>
+
+            <a-form-item
+              class="field"
+              name="city"
+              :label="t('home.labelCity')"
+              :rules="[{ required: true, message: t('home.ruleCity') }]"
+              :extra="regionNote"
+            >
+              <a-select
+                v-model:value="cityValue"
+                show-search
+                :placeholder="selectedProvince ? t('home.placeholderCity') : t('home.pickProvinceFirst')"
+                :options="cityOptions"
+                :filter-option="filterRegion"
+                :disabled="loading || !selectedProvince"
+                :not-found-content="t('home.noMatch')"
+              />
+            </a-form-item>
+
+            <a-form-item
+              class="field"
+              name="start_date"
+              :label="t('home.labelStartDate')"
+              :rules="[{ required: true, message: t('home.ruleStartDate') }]"
+            >
+              <a-date-picker
+                v-model:value="formData.start_date"
+                :placeholder="t('home.placeholderDate')"
+                format="YYYY-MM-DD"
+                :disabled="loading"
+                style="width: 100%"
+              />
+            </a-form-item>
+
+            <a-form-item
+              class="field"
+              name="end_date"
+              :label="t('home.labelEndDate')"
+              :rules="[{ required: true, message: t('home.ruleEndDate') }]"
+              :extra="tripLengthText"
+            >
+              <a-date-picker
+                v-model:value="formData.end_date"
+                :placeholder="t('home.placeholderDate')"
+                format="YYYY-MM-DD"
+                :disabled-date="disabledEndDate"
+                :disabled="loading"
+                style="width: 100%"
+              />
+            </a-form-item>
+
+            <a-form-item class="field" :name="['party', 'adults']" :label="t('home.labelAdults')" :extra="partyText">
+              <a-input-number
+                v-model:value="formData.party.adults"
+                :min="0"
+                :max="20"
+                :precision="0"
+                :disabled="loading"
+                style="width: 100%"
+              />
+            </a-form-item>
+
+            <a-form-item class="field" :name="['budget_constraint', 'amount']" :label="t('home.labelBudget')">
+              <a-input-number
+                v-model:value="formData.budget_constraint.amount"
+                :min="0"
+                :step="100"
+                :precision="0"
+                :placeholder="t('home.placeholderBudget')"
+                :aria-label="t('home.budgetAria')"
+                :disabled="loading"
+                prefix="¥"
+                style="width: 100%"
               />
             </a-form-item>
           </div>
-        </div>
 
-        <div class="submit-row">
-          <button class="primary" type="submit" :disabled="loading" :aria-busy="loading ? 'true' : 'false'">
-            <span>{{ loading ? t('home.submitting') : t('home.submit') }}</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false">
-              <path d="M3 12h17m-6-6 6 6-6 6" />
-            </svg>
-          </button>
-          <p class="submit-hint">{{ t('home.submitHint') }}</p>
-        </div>
+          <div class="constraint">
+            <a-checkbox v-model:checked="strictBudget" :disabled="loading || !hasBudgetAmount">
+              {{ t('home.strictBudget') }}
+            </a-checkbox>
+            <span class="constraint-mode" aria-live="polite">
+              {{ hasBudgetAmount ? budgetModeText : t('home.strictNeedsAmount') }}
+            </span>
+          </div>
 
-        <div ref="ticketAnchor">
-          <TripTicketProgress
-            v-if="run.state.value.status !== 'idle'"
-            :state="run.state.value"
-            :now="run.clock.value"
-            :summary="ticketSummary"
-            @retry="retrySubmit"
-          />
-        </div>
-      </a-form>
-    </div>
+          <div class="options">
+            <button
+              type="button"
+              class="options-toggle"
+              :aria-expanded="optionsOpen"
+              aria-controls="more-options"
+              @click="optionsOpen = !optionsOpen"
+            >
+              <span>{{ t('home.moreOptions') }}</span>
+              <span class="options-sign" aria-hidden="true">{{ optionsOpen ? '−' : '＋' }}</span>
+            </button>
+            <!-- v-show keeps every field mounted so collapsed values are still submitted. -->
+            <div v-show="optionsOpen" id="more-options" class="option-fields">
+              <a-form-item class="field" :name="['party', 'children']" :label="t('home.labelChildren')">
+                <a-input-number v-model:value="formData.party.children" :min="0" :max="20" :precision="0" :disabled="loading" style="width: 100%" />
+              </a-form-item>
+              <a-form-item class="field" :name="['party', 'elders']" :label="t('home.labelElders')">
+                <a-input-number v-model:value="formData.party.elders" :min="0" :max="20" :precision="0" :disabled="loading" style="width: 100%" />
+              </a-form-item>
+              <a-form-item class="field" :name="['party', 'companion_type']" :label="t('home.labelCompanion')">
+                <a-select v-model:value="formData.party.companion_type" :options="companionTypeOptions" :disabled="loading" />
+              </a-form-item>
+              <a-form-item class="field" :name="['budget_constraint', 'budget_level']" :label="t('home.labelBudgetLevel')">
+                <a-select v-model:value="formData.budget_constraint.budget_level" :options="budgetLevelOptions" :disabled="loading" />
+              </a-form-item>
+              <a-form-item class="field" name="transportation" :label="t('home.labelTransportation')">
+                <a-select v-model:value="formData.transportation" :options="transportationOptions" :disabled="loading" />
+              </a-form-item>
+              <a-form-item class="field" name="accommodation" :label="t('home.labelAccommodation')">
+                <a-select v-model:value="formData.accommodation" :options="accommodationOptions" :disabled="loading" />
+              </a-form-item>
+              <a-form-item class="field wide" name="preferences" :label="t('home.labelPreferences')">
+                <a-checkbox-group v-model:value="formData.preferences" class="preference" :disabled="loading">
+                  <a-checkbox v-for="option in preferenceOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </a-checkbox>
+                </a-checkbox-group>
+              </a-form-item>
+              <a-form-item class="field wide" name="free_text_input" :label="t('home.labelExtra')">
+                <a-textarea
+                  v-model:value="formData.free_text_input"
+                  :placeholder="t('home.placeholderExtra')"
+                  :auto-size="{ minRows: 2, maxRows: 5 }"
+                  :disabled="loading"
+                />
+              </a-form-item>
+            </div>
+          </div>
 
-    <CameraCarousel />
-  </section>
+          <div class="submit-row">
+            <button class="primary" type="submit" :disabled="loading" :aria-busy="loading ? 'true' : 'false'">
+              <span>{{ loading ? t('home.submitting') : t('home.submit') }}</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false">
+                <path d="M3 12h17m-6-6 6 6-6 6" />
+              </svg>
+            </button>
+            <p class="submit-hint">{{ t('home.submitHint') }}</p>
+          </div>
+
+        </a-form>
+      </div>
+
+      <CameraCarousel />
+    </section>
+
+    <!-- Full-screen transition while the plan is generated; hands off to the result page. -->
+    <TripTransitionOverlay
+      :open="overlayOpen"
+      :state="run.state.value"
+      :now="run.clock.value"
+      :summary="ticketSummary"
+      @retry="retrySubmit"
+      @close="closeOverlay"
+    />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -204,8 +207,9 @@ import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import dayjs, { type Dayjs } from 'dayjs'
 import CameraCarousel from '@/components/home/CameraCarousel.vue'
-import TripTicketProgress from '@/components/home/TripTicketProgress.vue'
-import { useTripPlanRun } from '@/composables/useTripPlanRun'
+import TripTransitionOverlay from '@/components/home/TripTransitionOverlay.vue'
+import { HANDOFF_DELAY_MS, HANDOFF_DELAY_REDUCED_MS, useTripPlanRun } from '@/composables/useTripPlanRun'
+import { playNextRouteTransition } from '@/services/routeTransition'
 import { loadRequest } from '@/services/tripSession'
 import type { TripFormData } from '@/types'
 import { PROVINCES, citySupport, findCity, type ProvinceOption } from '@/data/regions'
@@ -220,19 +224,25 @@ import {
 
 const router = useRouter()
 const formRef = ref()
-const ticketAnchor = ref<HTMLElement | null>(null)
+const prefersReducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
 // One planning run at a time; the plan is saved once and the result page opens once.
 const run = useTripPlanRun({
-  navigate: () => router.push({ path: '/result', query: { day: '1' } }),
+  navigate: () => {
+    playNextRouteTransition('trip-reveal')
+    router.push({ path: '/result', query: { day: '1' } })
+  },
+  handoffDelay: () => (prefersReducedMotion() ? HANDOFF_DELAY_REDUCED_MS : HANDOFF_DELAY_MS),
   onSettled: (outcome) => {
     if (outcome === 'fallback') message.warning(t('home.fallbackNotice'))
     else message.success(t('home.successGenerated'))
-  },
-  onFailed: () => message.error(t('home.errGenerate'))
+  }
+  // Errors are shown (and announced) by the ticket itself; a toast would cover it.
 })
 // Form stays locked while running and during the short hand-off to the result page.
 const loading = run.busy
+// The overlay stays up for every non-idle state; errors close it via "back to edit".
+const overlayOpen = computed(() => run.state.value.status !== 'idle')
 const optionsOpen = ref(false)
 // Hard budget toggle: when checked (and an amount is set) strictness becomes 'hard'.
 const strictBudget = ref(false)
@@ -452,11 +462,14 @@ const handleSubmit = async () => {
     }
   }
 
-  const pending = run.submit(requestData)
+  await run.submit(requestData)
+}
+
+/** "Back to edit" after an error: close the overlay and return focus to the form. */
+const closeOverlay = async () => {
+  run.reset()
   await nextTick()
-  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  ticketAnchor.value?.scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' })
-  await pending
+  document.querySelector<HTMLButtonElement>('.planner-form button.primary')?.focus()
 }
 
 /** Retry from the error ticket: re-run form validation, then submit once. */
