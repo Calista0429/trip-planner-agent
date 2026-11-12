@@ -182,29 +182,14 @@
           <p class="submit-hint">{{ t('home.submitHint') }}</p>
         </div>
 
-        <div class="progress" role="status" aria-live="polite">
-          <template v-if="loading">
-            <div
-              class="progress-track"
-              role="progressbar"
-              :aria-valuenow="loadingProgress"
-              aria-valuemin="0"
-              aria-valuemax="100"
-              :aria-valuetext="loadingStatus"
-            >
-              <span :style="{ width: `${loadingProgress}%` }"></span>
-            </div>
-            <p class="progress-text">
-              <span>{{ loadingStatus }}</span>
-              <span class="progress-value">{{ loadingProgress }}%</span>
-            </p>
-          </template>
-        </div>
-
-        <div v-if="errorText" class="form-error" role="alert">
-          <strong>{{ t('home.errTitle') }}</strong>
-          <p>{{ errorText }}</p>
-          <p class="form-error-hint">{{ t('home.errRetry') }}</p>
+        <div ref="ticketAnchor">
+          <TripTicketProgress
+            v-if="run.state.value.status !== 'idle'"
+            :state="run.state.value"
+            :now="run.clock.value"
+            :summary="ticketSummary"
+            @retry="retrySubmit"
+          />
         </div>
       </a-form>
     </div>
@@ -219,8 +204,9 @@ import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import dayjs, { type Dayjs } from 'dayjs'
 import CameraCarousel from '@/components/home/CameraCarousel.vue'
-import { streamTripPlan } from '@/services/api'
-import { loadRequest, saveMeta, savePlan, saveRequest, isFallbackStatus } from '@/services/tripSession'
+import TripTicketProgress from '@/components/home/TripTicketProgress.vue'
+import { useTripPlanRun } from '@/composables/useTripPlanRun'
+import { loadRequest } from '@/services/tripSession'
 import type { TripFormData } from '@/types'
 import { PROVINCES, citySupport, findCity, type ProvinceOption } from '@/data/regions'
 import { locale, t } from '@/i18n'
@@ -234,10 +220,19 @@ import {
 
 const router = useRouter()
 const formRef = ref()
-const loading = ref(false)
-const loadingProgress = ref(0)
-const loadingStatus = ref('')
-const errorText = ref('')
+const ticketAnchor = ref<HTMLElement | null>(null)
+
+// One planning run at a time; the plan is saved once and the result page opens once.
+const run = useTripPlanRun({
+  navigate: () => router.push({ path: '/result', query: { day: '1' } }),
+  onSettled: (outcome) => {
+    if (outcome === 'fallback') message.warning(t('home.fallbackNotice'))
+    else message.success(t('home.successGenerated'))
+  },
+  onFailed: () => message.error(t('home.errGenerate'))
+})
+// Form stays locked while running and during the short hand-off to the result page.
+const loading = run.busy
 const optionsOpen = ref(false)
 // Hard budget toggle: when checked (and an amount is set) strictness becomes 'hard'.
 const strictBudget = ref(false)
@@ -419,41 +414,8 @@ onMounted(async () => {
   suppressCompanionDerive = false
 })
 
-// Map a streamed planning phase to a monotonic progress value (never regresses).
-const PHASE_PROGRESS: Record<string, number> = {
-  collecting_attractions: 20,
-  collecting_weather: 22,
-  collecting_hotels: 24,
-  collecting_context: 30,
-  building_query: 35,
-  switching_model: 75,
-  reranking: 90,
-  fallback: 90
-}
-
-function nextProgress(phase: string | undefined, attempt: number | undefined, current: number): number {
-  if (phase === 'generating') {
-    // Each generate attempt nudges progress forward but stays below rerank.
-    return Math.min(85, Math.max(current, 40 + (attempt ?? 1) * 8))
-  }
-  const target = phase ? PHASE_PROGRESS[phase] ?? current : current
-  return Math.max(current, target)
-}
-
-/** Localized copy for a phase; falls back to the server's own message. */
-function phaseText(phase: string | undefined, attempt: number | undefined, fallback: string | undefined): string {
-  if (phase === 'generating') {
-    return attempt ? t('progress.generatingAttempt', { n: attempt }) : t('progress.generating')
-  }
-  if (phase) {
-    const key = `progress.${phase}`
-    const text = t(key)
-    if (text !== key) return text
-  }
-  return fallback || loadingStatus.value
-}
-
 const handleSubmit = async () => {
+  if (loading.value) return
   if (!formData.start_date || !formData.end_date) {
     message.error(t('home.errPickDate'))
     return
@@ -464,80 +426,64 @@ const handleSubmit = async () => {
     return
   }
 
-  loading.value = true
-  errorText.value = ''
-  loadingProgress.value = 0
-  loadingStatus.value = t('progress.starting')
-
-  let switchedModel = false
-
-  try {
-    const budgetAmount = formData.budget_constraint.amount
-    const requestData: TripFormData = {
-      city: formData.city,
-      start_date: formData.start_date.format('YYYY-MM-DD'),
-      end_date: formData.end_date.format('YYYY-MM-DD'),
-      travel_days: formData.travel_days,
-      transportation: formData.transportation,
-      accommodation: formData.accommodation,
-      preferences: formData.preferences,
-      free_text_input: formData.free_text_input,
-      party: {
-        adults: formData.party.adults,
-        children: formData.party.children,
-        elders: formData.party.elders,
-        total: formData.party.total,
-        companion_type: formData.party.companion_type
-      },
-      budget_constraint: {
-        amount: budgetAmount ?? null,
-        scope: 'total',
-        currency: 'CNY',
-        budget_level: formData.budget_constraint.budget_level,
-        strictness: budgetStrictness.value
-      }
+  const budgetAmount = formData.budget_constraint.amount
+  const requestData: TripFormData = {
+    city: formData.city,
+    start_date: formData.start_date.format('YYYY-MM-DD'),
+    end_date: formData.end_date.format('YYYY-MM-DD'),
+    travel_days: formData.travel_days,
+    transportation: formData.transportation,
+    accommodation: formData.accommodation,
+    preferences: [...formData.preferences],
+    free_text_input: formData.free_text_input,
+    party: {
+      adults: formData.party.adults,
+      children: formData.party.children,
+      elders: formData.party.elders,
+      total: formData.party.total,
+      companion_type: formData.party.companion_type
+    },
+    budget_constraint: {
+      amount: budgetAmount ?? null,
+      scope: 'total',
+      currency: 'CNY',
+      budget_level: formData.budget_constraint.budget_level,
+      strictness: budgetStrictness.value
     }
-
-    let resultStatus: string | undefined
-    let resultMessage: string | undefined
-    const plan = await streamTripPlan(requestData, (event) => {
-      if (event.type === 'progress') {
-        if (event.phase === 'switching_model') switchedModel = true
-        loadingStatus.value = phaseText(event.phase, event.attempt, event.message)
-        loadingProgress.value = nextProgress(event.phase, event.attempt, loadingProgress.value)
-      } else if (event.type === 'result') {
-        resultStatus = event.status
-        resultMessage = event.message
-      }
-    })
-
-    loadingProgress.value = 100
-    loadingStatus.value = t('progress.done')
-
-    // Persist the plan (existing key) plus this request and generation meta.
-    savePlan(plan)
-    saveRequest(requestData)
-    saveMeta({ status: resultStatus, message: resultMessage, switchedModel })
-
-    if (isFallbackStatus(resultStatus)) {
-      message.warning(t('home.fallbackNotice'))
-    } else {
-      message.success(t('home.successGenerated'))
-    }
-    setTimeout(() => {
-      router.push({ path: '/result', query: { day: '1' } })
-    }, 400)
-  } catch (error: any) {
-    errorText.value = error?.message || t('home.errGenerate')
-    message.error(t('home.errGenerate'))
-  } finally {
-    setTimeout(() => {
-      loading.value = false
-      loadingProgress.value = 0
-      loadingStatus.value = ''
-    }, 600)
   }
+
+  const pending = run.submit(requestData)
+  await nextTick()
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  ticketAnchor.value?.scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' })
+  await pending
 }
+
+/** Retry from the error ticket: re-run form validation, then submit once. */
+const retrySubmit = async () => {
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
+  await handleSubmit()
+}
+
+/** Facts for the ticket, taken from the request this run was started with. */
+const ticketSummary = computed(() => {
+  const req = run.request.value
+  if (!req) return []
+  const match = findCity(req.city)
+  const city = match ? (locale.value === 'en' ? match.city.en : match.city.name) : req.city
+  const fmt = locale.value === 'en' ? 'MMM D' : 'M月D日'
+  const start = dayjs(req.start_date)
+  const end = dayjs(req.end_date)
+  const dates = start.isValid() && end.isValid() ? `${start.format(fmt)} – ${end.format(fmt)}` : ''
+  const days = req.travel_days === 1 ? t('progress.summaryDayOne') : t('progress.summaryDays', { n: req.travel_days })
+  const people =
+    req.party?.total === 1 ? t('progress.summaryPersonOne') : t('progress.summaryPeople', { n: req.party?.total ?? 0 })
+  return [city, dates, days, people].filter(Boolean)
+})
 </script>
 
 <style scoped>
@@ -761,56 +707,6 @@ h1 {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.7;
-}
-
-.progress {
-  margin-top: 16px;
-}
-
-.progress-track {
-  height: 3px;
-  overflow: hidden;
-  background: var(--line);
-}
-
-.progress-track span {
-  display: block;
-  height: 100%;
-  background: var(--pine);
-  transition: width 0.4s ease;
-}
-
-.progress-text {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 8px 0 0;
-  color: var(--pine);
-  font-size: 12px;
-}
-
-.progress-value {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.form-error {
-  margin-top: 14px;
-  padding: 12px 14px;
-  border-left: 2px solid #a14a3b;
-  background: #f8eeeb;
-  color: #6b3026;
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.form-error p {
-  margin: 4px 0 0;
-  overflow-wrap: anywhere;
-}
-
-.form-error-hint {
-  color: #8a5a50;
 }
 
 @media (max-width: 1100px) {
