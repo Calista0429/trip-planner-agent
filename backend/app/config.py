@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     personalized_llm_model: str = ""
     personalized_llm_provider: str = "openai"
 
+    # 漫画旅行服务（comic-trip-agent，独立部署的 Quarkus 服务）
+    # 留空则 /api/comic/* 返回 503。每张照片最长 240s，服务端整体约 300s，
+    # 代理超时要比它长，否则漫画还在生成，代理已经先断开了。
+    comic_service_url: str = ""
+    comic_service_timeout_seconds: float = 330.0
+
     # 日志配置
     log_level: str = "INFO"
 

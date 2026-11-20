@@ -26,7 +26,8 @@ const router = createRouter({
       component: () => import('./views/Credits.vue')
     },
     {
-      // Album features are not built yet; both pages say so plainly.
+      // Make an album from photos (via /api/comic/upload); `/albums/library?album=<id>`
+      // opens one saved in this browser.
       path: '/albums',
       name: 'AlbumWorkspace',
       component: () => import('./views/AlbumWorkspace.vue')
@@ -40,7 +41,8 @@ const router = createRouter({
   scrollBehavior(to, from, savedPosition) {
     if (savedPosition) return savedPosition
     // Switching days only changes the query; keep the reader where they are.
-    if (to.path === from.path) return false
+    // (Opening an album in the library also only changes the query, but should start at the top.)
+    if (to.name === 'Result' && from.name === 'Result') return false
     return { top: 0 }
   }
 })
