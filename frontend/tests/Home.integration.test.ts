@@ -186,3 +186,122 @@ describe('Home.vue with the journey ticket', () => {
     expect(sessionStorage.getItem('tripPlan')).toBeNull()
   })
 })
+
+// ---- Side-menu navigation: unsubmitted draft, generation lock ----
+
+const { PLANNER_DRAFT_KEY } = await import('@/services/plannerDraft')
+const { RouterView } = await import('vue-router')
+
+async function mountShell(start = '/') {
+  const Blank = defineComponent({ render: () => h('div', { class: 'blank' }) })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', name: 'Home', component: Home },
+      { path: '/albums', name: 'AlbumWorkspace', component: Blank },
+      { path: '/result', name: 'Result', component: Blank }
+    ]
+  })
+  router.push(start)
+  await router.isReady()
+  const Shell = defineComponent({ render: () => h(RouterView) })
+  const wrapper = mount(Shell, { global: { plugins: [router, Antd] }, attachTo: document.body })
+  await flushPromises()
+  const home = () => wrapper.findComponent(Home).vm as any
+  return { wrapper, router, home }
+}
+
+async function go(router: ReturnType<typeof createRouter>, path: string) {
+  await router.push(path)
+  await flushPromises()
+}
+
+describe('Home.vue drafts and leaving the page', () => {
+  it('keeps unsubmitted edits when leaving right away and coming back', async () => {
+    const { wrapper, router, home } = await mountShell()
+    home().formData.free_text_input = '想看日落'
+    home().formData.start_date = null
+    home().formData.budget_constraint.amount = 0
+    await flushPromises()
+    home().formData.party.companion_type = 'friends' // picked by hand, differs from the 2-adult default
+    home().optionsOpen = true
+    await flushPromises()
+
+    await go(router, '/albums') // before the 200ms debounce fires
+    expect(wrapper.find('.blank').exists()).toBe(true)
+    await go(router, '/')
+
+    const form = home().formData
+    expect(form.free_text_input).toBe('想看日落')
+    expect(form.start_date).toBeNull()
+    expect(form.end_date.format('YYYY-MM-DD')).toBe('2026-11-21')
+    expect(form.budget_constraint.amount).toBe(0)
+    expect(home().strictBudget).toBe(true)
+    expect(form.party.companion_type).toBe('friends')
+    expect(home().optionsOpen).toBe(true)
+    expect(JSON.parse(sessionStorage.getItem('tripRequest')!)).toEqual(sampleRequest)
+    wrapper.unmount()
+  })
+
+  it('keeps a province-only form', async () => {
+    sessionStorage.clear()
+    const { wrapper, router, home } = await mountShell()
+    home().provinceCode = '330000'
+    await flushPromises()
+    await go(router, '/albums')
+    await go(router, '/')
+    expect(home().provinceCode).toBe('330000')
+    expect(home().formData.city).toBe('')
+    wrapper.unmount()
+  })
+
+  it('falls back to the submitted request when the draft is corrupt', async () => {
+    sessionStorage.setItem(PLANNER_DRAFT_KEY, '{"version":1,')
+    const { wrapper, home } = await mountShell()
+    expect(home().formData.city).toBe('杭州市')
+    expect(home().formData.party.adults).toBe(2)
+    wrapper.unmount()
+  })
+
+  it('blocks leaving while running, then hands off once and clears the draft', async () => {
+    const { wrapper, router, home } = await mountShell('/albums')
+    await go(router, '/')
+    home().formData.free_text_input = '安静一点'
+    await submit(wrapper as never)
+    expect(calls).toHaveLength(1)
+
+    await go(router, '/albums')
+    expect(router.currentRoute.value.name).toBe('Home')
+    router.back()
+    await flushPromises()
+    expect(router.currentRoute.value.name).toBe('Home')
+
+    calls[0].emit({ type: 'result', success: true, status: 'fallback_success', data: samplePlan })
+    calls[0].resolve(samplePlan)
+    await flushPromises()
+    // Still locked during the hand-off pause.
+    await go(router, '/albums')
+    expect(router.currentRoute.value.name).toBe('Home')
+
+    await new Promise((r) => setTimeout(r, HANDOFF_DELAY_MS + 50))
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/result?day=1')
+    expect(calls).toHaveLength(1)
+    expect(sessionStorage.getItem(PLANNER_DRAFT_KEY)).toBeNull()
+    expect(JSON.parse(sessionStorage.getItem('tripRequest')!).free_text_input).toBe('安静一点')
+    wrapper.unmount()
+  })
+
+  it('allows leaving after a failure and keeps the input', async () => {
+    const { wrapper, router, home } = await mountShell()
+    home().formData.free_text_input = '再试一次'
+    await submit(wrapper as never)
+    calls[0].reject(new StreamError('sse', 'LLM timeout'))
+    await flushPromises()
+    await go(router, '/albums')
+    expect(router.currentRoute.value.name).toBe('AlbumWorkspace')
+    await go(router, '/')
+    expect(home().formData.free_text_input).toBe('再试一次')
+    wrapper.unmount()
+  })
+})

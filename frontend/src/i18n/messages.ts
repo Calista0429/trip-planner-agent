@@ -10,6 +10,8 @@ export interface Messages {
   progress: Record<string, string>
   carousel: Record<string, string>
   credits: Record<string, string>
+  nav: Record<string, string>
+  album: Record<string, string>
   result: Record<string, string>
   weather: Record<string, string>
   map: Record<string, string>
@@ -18,9 +20,6 @@ export interface Messages {
 const zh: Messages = {
   app: {
     brand: 'Trip Planner',
-    navHome: '首页',
-    navTrip: '我的行程',
-    navAria: '产品导航',
     langAria: '界面语言',
     tagline: '从一个目的地，开始一段旅程',
     footer: 'HelloAgents Trip Planner',
@@ -164,6 +163,35 @@ const zh: Messages = {
     crop: '裁切位置',
     source: '查看照片原始页面'
   },
+  nav: {
+    aria: '功能导航',
+    caption: '把远方，\n收进日常。',
+    groupCreate: '旅行创作',
+    groupMine: '我的旅行',
+    plan: '旅行规划',
+    album: '旅行相册',
+    trip: '我的行程',
+    library: '我的相册',
+    note: '出发前，有计划。\n归来后，有回忆。',
+    collapse: '收起侧栏',
+    expand: '展开侧栏',
+    openMenu: '打开菜单',
+    closeMenu: '关闭菜单',
+    drawerTitle: '导航菜单'
+  },
+  album: {
+    caption: '旅行相册',
+    workspaceTitle: '让旅途，\n再翻一页。',
+    workspaceIntro: '把照片与沿途故事，整理成一本旅行相册。',
+    status: '相册功能准备中',
+    statusDesc: '照片上传、故事整理与相册生成将在后续开放。',
+    toLibrary: '查看我的相册',
+    toPlanner: '返回旅行规划',
+    libraryTitle: '我的相册',
+    libraryEmpty: '还没有旅行相册',
+    libraryDesc: '相册功能开放后，你的旅行作品会保存在这里。',
+    toWorkspace: '了解旅行相册'
+  },
   result: {
     caption: '你的下一段旅程',
     titleDays: '{city} · {n} 日行程',
@@ -174,6 +202,10 @@ const zh: Messages = {
     partyChildren: '{n} 位儿童',
     partyElders: '{n} 位老人',
     editConditions: '编辑旅行条件',
+    leaveTitle: '还有未保存的修改',
+    leaveDesc: '现在离开，本次对行程的修改不会保存。',
+    leaveStay: '继续编辑',
+    leaveDiscard: '放弃修改并离开',
     edit: '编辑行程',
     save: '保存修改',
     cancel: '撤销修改',
@@ -317,9 +349,6 @@ const zh: Messages = {
 const en: Messages = {
   app: {
     brand: 'Trip Planner',
-    navHome: 'Home',
-    navTrip: 'My trip',
-    navAria: 'Product navigation',
     langAria: 'Interface language',
     tagline: 'Every journey starts with a destination',
     footer: 'HelloAgents Trip Planner',
@@ -463,6 +492,35 @@ const en: Messages = {
     crop: 'Crop position',
     source: 'View the original photo page'
   },
+  nav: {
+    aria: 'Main navigation',
+    caption: 'Keep your journeys close.',
+    groupCreate: 'Create',
+    groupMine: 'My journeys',
+    plan: 'Trip planner',
+    album: 'Album studio',
+    trip: 'My itinerary',
+    library: 'My albums',
+    note: 'Plan before you go.\nRemember when you return.',
+    collapse: 'Collapse sidebar',
+    expand: 'Expand sidebar',
+    openMenu: 'Open menu',
+    closeMenu: 'Close menu',
+    drawerTitle: 'Menu'
+  },
+  album: {
+    caption: 'Travel albums',
+    workspaceTitle: 'Turn your journey into an album.',
+    workspaceIntro: 'Gather your photos and the stories along the way into one travel album.',
+    status: 'Album features are coming soon.',
+    statusDesc: 'Photo uploads, story editing and album creation will open in a later release.',
+    toLibrary: 'View my albums',
+    toPlanner: 'Back to the trip planner',
+    libraryTitle: 'My albums',
+    libraryEmpty: 'No travel albums yet',
+    libraryDesc: 'Once albums open, the books you make from your trips will be kept here.',
+    toWorkspace: 'About travel albums'
+  },
   result: {
     caption: 'Your next journey',
     titleDays: '{n} days in {city}',
@@ -473,6 +531,10 @@ const en: Messages = {
     partyChildren: '{n} children',
     partyElders: '{n} elders',
     editConditions: 'Edit trip details',
+    leaveTitle: 'You have unsaved changes',
+    leaveDesc: 'If you leave now, your edits to this itinerary will not be saved.',
+    leaveStay: 'Keep editing',
+    leaveDiscard: 'Discard and leave',
     edit: 'Edit itinerary',
     save: 'Save changes',
     cancel: 'Undo changes',

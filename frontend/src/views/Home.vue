@@ -202,8 +202,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import dayjs, { type Dayjs } from 'dayjs'
 import CameraCarousel from '@/components/home/CameraCarousel.vue'
@@ -211,6 +211,8 @@ import TripTransitionOverlay from '@/components/home/TripTransitionOverlay.vue'
 import { HANDOFF_DELAY_MS, HANDOFF_DELAY_REDUCED_MS, useTripPlanRun } from '@/composables/useTripPlanRun'
 import { playNextRouteTransition } from '@/services/routeTransition'
 import { loadRequest } from '@/services/tripSession'
+import { clearPlannerDraft, loadPlannerDraft, savePlannerDraft, type PlannerDraft } from '@/services/plannerDraft'
+import { useShellNavigationLock } from '@/services/shellNavigation'
 import type { TripFormData } from '@/types'
 import { PROVINCES, citySupport, findCity, type ProvinceOption } from '@/data/regions'
 import { locale, t } from '@/i18n'
@@ -227,13 +229,20 @@ const formRef = ref()
 const prefersReducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
 // One planning run at a time; the plan is saved once and the result page opens once.
+// The leave guard below lets exactly this navigation through.
+let handoffInProgress = false
 const run = useTripPlanRun({
   navigate: () => {
     playNextRouteTransition('trip-reveal')
-    router.push({ path: '/result', query: { day: '1' } })
+    handoffInProgress = true
+    void router.push({ path: '/result', query: { day: '1' } }).finally(() => {
+      handoffInProgress = false
+    })
   },
   handoffDelay: () => (prefersReducedMotion() ? HANDOFF_DELAY_REDUCED_MS : HANDOFF_DELAY_MS),
   onSettled: (outcome) => {
+    // The plan and its request are saved; this round's draft is done with.
+    discardDraft()
     if (outcome === 'fallback') message.warning(t('home.fallbackNotice'))
     else message.success(t('home.successGenerated'))
   }
@@ -249,9 +258,15 @@ const strictBudget = ref(false)
 // Prefill writes party fields in bulk; skip the companion auto-derivation once.
 let suppressCompanionDerive = false
 
-type TripFormState = Omit<TripFormData, 'start_date' | 'end_date'> & {
+type TripFormState = Omit<TripFormData, 'start_date' | 'end_date' | 'party'> & {
   start_date: Dayjs | null
   end_date: Dayjs | null
+  // A cleared number input holds null until the user types again.
+  party: Omit<TripFormData['party'], 'adults' | 'children' | 'elders'> & {
+    adults: number | null
+    children: number | null
+    elders: number | null
+  }
 }
 
 const formData = reactive<TripFormState>({
@@ -398,12 +413,62 @@ watch([() => formData.party.adults, () => formData.party.children, () => formDat
   }
 })
 
-// "Edit trip details" on the result page lands here: restore that request so
-// the user edits it instead of starting over. Only ever fills a fresh form.
-onMounted(async () => {
-  const saved = loadRequest()
-  if (!saved) return
-  suppressCompanionDerive = true
+// ---- Restoring the form: unsubmitted draft → last submitted request → defaults ----
+
+/** The draft of the form exactly as shown, including half-filled fields. */
+function snapshotDraft(): PlannerDraft {
+  return {
+    version: 1,
+    provinceCode: provinceCode.value ?? null,
+    form: {
+      city: formData.city,
+      start_date: formData.start_date ? formData.start_date.format('YYYY-MM-DD') : null,
+      end_date: formData.end_date ? formData.end_date.format('YYYY-MM-DD') : null,
+      transportation: formData.transportation,
+      accommodation: formData.accommodation,
+      preferences: [...formData.preferences],
+      free_text_input: formData.free_text_input,
+      party: {
+        adults: formData.party.adults ?? null,
+        children: formData.party.children ?? null,
+        elders: formData.party.elders ?? null,
+        companion_type: formData.party.companion_type
+      },
+      budget_constraint: {
+        amount: formData.budget_constraint.amount ?? null,
+        budget_level: formData.budget_constraint.budget_level
+      }
+    },
+    strictBudget: strictBudget.value,
+    optionsOpen: optionsOpen.value
+  }
+}
+
+function applyDraft(draft: PlannerDraft) {
+  const { form } = draft
+  const province = PROVINCES.find(p => p.adcode === draft.provinceCode)
+  provinceCode.value = province?.adcode
+  const city = province?.cities.find(c => c.name === form.city)
+  formData.city = province && city && citySupport(province, city) !== 'unsupported' ? city.name : ''
+  formData.start_date = form.start_date ? dayjs(form.start_date) : null
+  formData.end_date = form.end_date ? dayjs(form.end_date) : null
+  formData.transportation = form.transportation
+  formData.accommodation = form.accommodation
+  formData.preferences = [...form.preferences]
+  formData.free_text_input = form.free_text_input
+  formData.party.adults = form.party.adults
+  formData.party.children = form.party.children
+  formData.party.elders = form.party.elders
+  formData.party.companion_type = form.party.companion_type
+  formData.budget_constraint.amount = form.budget_constraint.amount
+  formData.budget_constraint.budget_level = form.budget_constraint.budget_level
+  strictBudget.value = draft.strictBudget
+  optionsOpen.value = draft.optionsOpen
+}
+
+// "Edit trip details" on the result page lands here with no draft: restore that
+// request so the user edits it instead of starting over.
+function applySubmittedRequest(saved: TripFormData) {
   // Older saved requests may hold a short or English name; map it onto the lists.
   const match = findCity(saved.city)
   provinceCode.value = match?.province.adcode
@@ -420,9 +485,70 @@ onMounted(async () => {
     formData.budget_constraint.budget_level = saved.budget_constraint.budget_level || 'standard'
     strictBudget.value = saved.budget_constraint.strictness === 'hard'
   }
-  await nextTick()
-  suppressCompanionDerive = false
+}
+
+// ---- Draft writes: debounced while editing, flushed when leaving ----
+
+const DRAFT_SAVE_DELAY_MS = 200
+/** Off until the form has been restored, so the initial empty form never overwrites a draft. */
+let draftWritable = false
+let draftTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelDraftTimer() {
+  if (draftTimer !== null) {
+    clearTimeout(draftTimer)
+    draftTimer = null
+  }
+}
+
+function flushDraft() {
+  cancelDraftTimer()
+  if (draftWritable) savePlannerDraft(snapshotDraft())
+}
+
+/** After a successful run: drop the draft and stop writing it for the rest of this page's life. */
+function discardDraft() {
+  cancelDraftTimer()
+  draftWritable = false
+  clearPlannerDraft()
+}
+
+watch(
+  [formData, provinceCode, strictBudget, optionsOpen],
+  () => {
+    if (!draftWritable) return
+    cancelDraftTimer()
+    draftTimer = setTimeout(flushDraft, DRAFT_SAVE_DELAY_MS)
+  },
+  { deep: true }
+)
+
+onMounted(async () => {
+  const draft = loadPlannerDraft()
+  const saved = draft ? null : loadRequest()
+  if (draft || saved) {
+    suppressCompanionDerive = true
+    if (draft) applyDraft(draft)
+    else if (saved) applySubmittedRequest(saved)
+    // Let the date / party watchers run on the restored values first.
+    await nextTick()
+    suppressCompanionDerive = false
+  }
+  draftWritable = true
 })
+
+// ---- Leaving: never in the middle of a run or its hand-off ----
+
+// Header, side menu and footer stay locked while the planning overlay is up.
+useShellNavigationLock(() => overlayOpen.value)
+
+onBeforeRouteLeave(() => {
+  if (run.busy.value && !handoffInProgress) return false
+  flushDraft()
+  return true
+})
+
+onBeforeUnmount(flushDraft)
 
 const handleSubmit = async () => {
   if (loading.value) return
@@ -447,9 +573,9 @@ const handleSubmit = async () => {
     preferences: [...formData.preferences],
     free_text_input: formData.free_text_input,
     party: {
-      adults: formData.party.adults,
-      children: formData.party.children,
-      elders: formData.party.elders,
+      adults: formData.party.adults ?? 0,
+      children: formData.party.children ?? 0,
+      elders: formData.party.elders ?? 0,
       total: formData.party.total,
       companion_type: formData.party.companion_type
     },
@@ -503,7 +629,7 @@ const ticketSummary = computed(() => {
 .home-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.38fr) minmax(0, 0.82fr);
-  gap: 76px;
+  gap: 32px;
   align-items: start;
   padding-top: 44px;
   padding-bottom: 35px;
@@ -722,10 +848,12 @@ h1 {
   line-height: 1.7;
 }
 
+/* With the side menu taking a column, two columns no longer fit here: stack
+   the form above the photographs (same order as on desktop). */
 @media (max-width: 1100px) {
   .home-layout {
-    grid-template-columns: minmax(0, 1.28fr) minmax(0, 0.9fr);
-    gap: 42px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
   }
 
   h1 {
