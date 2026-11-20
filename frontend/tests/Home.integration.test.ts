@@ -78,7 +78,9 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-describe('Home.vue with the journey ticket', () => {
+// These drive the real Ant Design form end to end (~3s each alone); under a full
+// parallel run they can pass the 5s default, so they get more room.
+describe('Home.vue with the journey ticket', { timeout: 15_000 }, () => {
   it('sends every request field, shows the ticket, saves once and opens the result once', async () => {
     const { wrapper, push } = await mountHome()
     expect(wrapper.find('.journey-ticket').exists()).toBe(false)
@@ -216,7 +218,7 @@ async function go(router: ReturnType<typeof createRouter>, path: string) {
   await flushPromises()
 }
 
-describe('Home.vue drafts and leaving the page', () => {
+describe('Home.vue drafts and leaving the page', { timeout: 15_000 }, () => {
   it('keeps unsubmitted edits when leaving right away and coming back', async () => {
     const { wrapper, router, home } = await mountShell()
     home().formData.free_text_input = '想看日落'

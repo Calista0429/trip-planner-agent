@@ -110,3 +110,32 @@ export interface TripPlanResponse {
   message: string
   data?: TripPlan
 }
+
+// Travel album (POST /api/comic/upload, proxied to the comic-trip-agent service).
+export type AlbumStyle = 'comic' | 'watercolor-journal' | 'retro-film' | 'anime'
+
+/** Every album style, in the order the picker shows them. */
+export const ALBUM_STYLES: AlbumStyle[] = ['comic', 'watercolor-journal', 'retro-film', 'anime']
+
+export interface AlbumPicture {
+  imageUrl: string
+  description: string
+  location: string
+  pointsOfInterest: string
+}
+
+/** A photo that could not be drawn; `reason` is a short code from the backend. */
+export interface AlbumFailure {
+  file: string
+  reason: string
+}
+
+export interface Album {
+  tripId: string
+  title: string
+  style: AlbumStyle
+  pictures: AlbumPicture[]
+  failed: AlbumFailure[]
+  /** ISO time the album was generated, stamped in the browser. */
+  createdAt: string
+}

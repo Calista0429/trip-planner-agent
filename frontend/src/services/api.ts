@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { TripFormData, TripPlan, TripPlanResponse } from '@/types'
+import type { Album, AlbumFailure, AlbumStyle, TripFormData, TripPlan, TripPlanResponse } from '@/types'
 
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
 
@@ -216,3 +216,37 @@ export async function healthCheck(): Promise<any> {
 }
 
 export default apiClient
+
+export const MAX_ALBUM_PHOTOS = 10
+export const MAX_ALBUM_PHOTO_BYTES = 15 * 1024 * 1024
+// Matches the backend's MAX_TOTAL_BYTES (the comic service refuses bodies over 100MB).
+export const MAX_ALBUM_TOTAL_BYTES = 95 * 1024 * 1024
+
+/** A failed album upload: `code` is a short client-safe code from the backend. */
+export class AlbumUploadError extends Error {
+  constructor(public code: string, public failed: AlbumFailure[] = []) {
+    super(code)
+  }
+}
+
+/**
+ * Turns travel photos into an album drawn in one style. Can take minutes: each
+ * photo is redrawn by an image model. Fetch has no timeout of its own; the
+ * backend gives up first.
+ */
+export async function uploadAlbumPhotos(files: File[], style: AlbumStyle): Promise<Album> {
+  const form = new FormData()
+  files.forEach(file => form.append('file', file, file.name))
+  form.append('style', style)
+
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}/api/comic/upload`, { method: 'POST', body: form })
+  } catch {
+    throw new AlbumUploadError('network')
+  }
+
+  const body = await response.json().catch(() => null)
+  if (response.ok && body) return { ...body, createdAt: new Date().toISOString() } as Album
+  throw new AlbumUploadError(body?.error || 'comic_failed', body?.failed || [])
+}
