@@ -24,6 +24,17 @@ const router = createRouter({
       path: '/credits',
       name: 'Credits',
       component: () => import('./views/Credits.vue')
+    },
+    {
+      // Album features are not built yet; both pages say so plainly.
+      path: '/albums',
+      name: 'AlbumWorkspace',
+      component: () => import('./views/AlbumWorkspace.vue')
+    },
+    {
+      path: '/albums/library',
+      name: 'AlbumLibrary',
+      component: () => import('./views/AlbumLibrary.vue')
     }
   ],
   scrollBehavior(to, from, savedPosition) {

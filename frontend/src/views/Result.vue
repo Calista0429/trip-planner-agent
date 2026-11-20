@@ -17,7 +17,7 @@
           <button type="button" class="ghost-button" @click="editConditions">{{ t('result.editConditions') }}</button>
           <button type="button" class="ghost-button" @click="toggleEditMode">{{ t('result.edit') }}</button>
           <a-dropdown :trigger="['click']" placement="bottomRight">
-            <button type="button" class="ghost-button" :disabled="exporting" :aria-busy="exporting ? 'true' : 'false'">
+            <button type="button" class="ghost-button" :disabled="exportBusy" :aria-busy="exportBusy ? 'true' : 'false'">
               {{ t('result.exportMenu') }}
               <svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="m4 6 4 4 4-4" /></svg>
             </button>
@@ -258,13 +258,15 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { Modal, message } from 'ant-design-vue'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import type { Attraction, TripFormData, TripPlan } from '@/types'
 import { API_BASE_URL } from '@/services/api'
 import { isFallbackStatus, loadMeta, loadPlan, loadRequest, savePlan, type TripPlanMeta } from '@/services/tripSession'
+import { clearPlannerDraft } from '@/services/plannerDraft'
+import { useShellNavigationLock } from '@/services/shellNavigation'
 import { locale, t } from '@/i18n'
 import { isLodgingBreakfastMeal, isValidLocation, normalizeLocation } from '@/utils/geo'
 import { attractionKey, buildDayPoints, hotelKey, mealKey } from '@/utils/mapPoints'
@@ -290,6 +292,8 @@ const originalPlan = ref<TripPlan | null>(null)
 const selectedKey = ref<string | null>(null)
 const mapRevision = ref(0)
 const exporting = ref(false)
+/** The whole export run: map snapshot, sheet render and file save. */
+const exportBusy = ref(false)
 const mapSnapshot = ref<string | null>(null)
 const attractionPhotos = ref<Record<string, string>>({})
 const failedPhotos = reactive(new Set<string>())
@@ -533,7 +537,42 @@ function onMapSelect(key: string, pointDay: number) {
 
 // ---- Editing ----
 
-const editConditions = () => router.push('/')
+// Back to the form with *this* plan's request: an older unsubmitted draft would
+// otherwise take precedence on the planning page.
+const editConditions = () => {
+  clearPlannerDraft()
+  router.push('/')
+}
+
+// ---- Leaving the page ----
+
+/** Edit mode with a real difference from the plan as it was when editing began. */
+const hasUnsavedEdits = () =>
+  editMode.value && !!originalPlan.value && JSON.stringify(tripPlan.value) !== JSON.stringify(originalPlan.value)
+
+const confirmDiscard = () =>
+  new Promise<boolean>(resolve => {
+    Modal.confirm({
+      title: t('result.leaveTitle'),
+      content: t('result.leaveDesc'),
+      okText: t('result.leaveDiscard'),
+      okType: 'danger',
+      cancelText: t('result.leaveStay'),
+      zIndex: 900,
+      onOk: () => resolve(true),
+      onCancel: () => resolve(false)
+    })
+  })
+
+// The export captures the off-screen sheet; leaving mid-way would lose the file.
+useShellNavigationLock(() => exportBusy.value || exporting.value)
+
+onBeforeRouteLeave(async () => {
+  if (exportBusy.value || exporting.value) return false
+  if (!hasUnsavedEdits()) return true
+  // Discarding leaves sessionStorage untouched: the saved plan stays as it was.
+  return confirmDiscard()
+})
 
 const toggleEditMode = () => {
   editMode.value = true
@@ -657,6 +696,7 @@ async function renderExportCanvas(): Promise<HTMLCanvasElement> {
 const fileStem = () => `${t('result.exportFilePrefix')}_${tripPlan.value?.city ?? ''}_${Date.now()}`
 
 async function exportAsImage() {
+  exportBusy.value = true
   message.loading({ content: t('result.toastGenImage'), key: 'export', duration: 0 })
   try {
     const canvas = await renderExportCanvas()
@@ -668,10 +708,13 @@ async function exportAsImage() {
   } catch (error: any) {
     console.error('Image export failed', error)
     message.error({ content: t('result.toastImageFail', { msg: error?.message ?? '' }), key: 'export' })
+  } finally {
+    exportBusy.value = false
   }
 }
 
 async function exportAsPDF() {
+  exportBusy.value = true
   message.loading({ content: t('result.toastGenPdf'), key: 'export', duration: 0 })
   try {
     const canvas = await renderExportCanvas()
@@ -699,11 +742,13 @@ async function exportAsPDF() {
   } catch (error: any) {
     console.error('PDF export failed', error)
     message.error({ content: t('result.toastPdfFail', { msg: error?.message ?? '' }), key: 'export' })
+  } finally {
+    exportBusy.value = false
   }
 }
 
 function onExport({ key }: { key: string | number }) {
-  if (exporting.value) return
+  if (exportBusy.value) return
   if (key === 'image') void exportAsImage()
   else if (key === 'pdf') void exportAsPDF()
 }
@@ -848,7 +893,7 @@ function onExport({ key }: { key: string | number }) {
 .result-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  gap: 58px;
+  gap: 32px;
 }
 
 .itinerary,
@@ -860,7 +905,7 @@ function onExport({ key }: { key: string | number }) {
   align-self: start;
 }
 
-@media (min-width: 761px) and (min-height: 860px) {
+@media (min-width: 1101px) and (min-height: 860px) {
   .trip-sidebar {
     position: sticky;
     top: 16px;
@@ -1184,8 +1229,10 @@ function onExport({ key }: { key: string | number }) {
   font-size: 15px;
 }
 
+/* Itinerary above the map once the side menu leaves too little width for two columns. */
 @media (max-width: 1100px) {
   .result-layout {
+    grid-template-columns: minmax(0, 1fr);
     gap: 30px;
   }
 
