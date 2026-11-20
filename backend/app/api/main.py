@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from ..config import get_settings, validate_config, print_config
 from ..observability.tracing import init_tracing
-from .routes import trip, poi, map as map_routes, rag as rag_routes
+from .routes import trip, poi, map as map_routes, rag as rag_routes, comic as comic_routes
 
 # 获取配置
 settings = get_settings()
@@ -32,6 +32,7 @@ app.include_router(trip.router, prefix="/api")
 app.include_router(poi.router, prefix="/api")
 app.include_router(map_routes.router, prefix="/api")
 app.include_router(rag_routes.router, prefix="/api")
+app.include_router(comic_routes.router, prefix="/api")
 
 
 @app.on_event("startup")
