@@ -213,6 +213,8 @@
 <text x="218" y="272" fill="#64748b" font-size="8" text-anchor="middle">SSE</text>
 <path d="M115,330 L115,376" fill="none" stroke="#64748b" stroke-width="1.3" marker-end="url(#arrowhead)"/>
 <text x="122" y="358" fill="#64748b" font-size="8" text-anchor="start">render maps</text>
+<path d="M240,318 L220,318 L220,520 L204,520" fill="none" stroke="#64748b" stroke-width="1.3" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/>
+<text x="226" y="470" fill="#64748b" font-size="8" text-anchor="start">photos + style</text>
 <path d="M320,330 L320,376" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/>
 <text x="327" y="358" fill="#64748b" font-size="8" text-anchor="start">traces</text>
 <path d="M400,260 L425,260 L425,138 L456,138" fill="none" stroke="#64748b" stroke-width="1.3" marker-end="url(#arrowhead)"/>
@@ -316,7 +318,7 @@
 <text x="115.0" y="245" fill="white" font-size="11" font-weight="600" text-anchor="middle">Frontend</text>
 <text x="115.0" y="259" fill="#94a3b8" font-size="8.5" text-anchor="middle">Vue 3 + TS + Vite</text>
 <text x="115.0" y="271" fill="#94a3b8" font-size="8.5" text-anchor="middle">Ant Design Vue</text>
-<text x="115.0" y="283" fill="#94a3b8" font-size="8.5" text-anchor="middle">Home.vue → Result.vue</text>
+<text x="115.0" y="283" fill="#94a3b8" font-size="8.5" text-anchor="middle">planner · itinerary · albums</text>
 <text x="115.0" y="295" fill="#94a3b8" font-size="8.5" text-anchor="middle">zh / en i18n · :5173</text>
 <rect x="240" y="226" width="160" height="104" rx="6" fill="#0f172a"/>
 <rect x="240" y="226" width="160" height="104" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
@@ -325,6 +327,7 @@
 <text x="320.0" y="271" fill="#94a3b8" font-size="8.5" text-anchor="middle">POST /api/trip/plan</text>
 <text x="320.0" y="283" fill="#94a3b8" font-size="8.5" text-anchor="middle">POST /api/trip/plan/stream</text>
 <text x="320.0" y="295" fill="#94a3b8" font-size="8.5" text-anchor="middle">/api/map · /api/poi</text>
+<text x="320.0" y="307" fill="#94a3b8" font-size="8.5" text-anchor="middle">POST /api/comic/upload</text>
 <rect x="30" y="380" width="170" height="56" rx="6" fill="#0f172a"/>
 <rect x="30" y="380" width="170" height="56" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
 <text x="115.0" y="399" fill="white" font-size="11" font-weight="600" text-anchor="middle">Amap JS API</text>
@@ -333,6 +336,12 @@
 <rect x="240" y="380" width="160" height="56" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,4"/>
 <text x="320.0" y="399" fill="white" font-size="11" font-weight="600" text-anchor="middle">LangSmith</text>
 <text x="320.0" y="413" fill="#94a3b8" font-size="8.5" text-anchor="middle">tracing · eval runs</text>
+<rect x="30" y="486" width="170" height="68" rx="6" fill="#0f172a"/>
+<rect x="30" y="486" width="170" height="68" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="4,4"/>
+<text x="115.0" y="505" fill="white" font-size="11" font-weight="600" text-anchor="middle">Album service</text>
+<text x="115.0" y="519" fill="#94a3b8" font-size="8.5" text-anchor="middle">comic-trip-agent · Quarkus</text>
+<text x="115.0" y="531" fill="#94a3b8" font-size="8.5" text-anchor="middle">ADK agents · Gemini images</text>
+<text x="115.0" y="543" fill="#94a3b8" font-size="8.5" text-anchor="middle">pictures stored in GCS</text>
 <rect x="970" y="386" width="110" height="64" rx="6" fill="#0f172a"/>
 <rect x="970" y="386" width="110" height="64" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
 <text x="1025.0" y="405" fill="white" font-size="11" font-weight="600" text-anchor="middle">LLM API</text>
@@ -364,7 +373,7 @@
     <div class="cards">
       <div class="card">
         <div class="card-header"><div class="card-dot cyan"></div><h3>Request path</h3></div>
-        <ul><li>• Vue form posts TripRequest to FastAPI</li><li>• /plan/stream emits one SSE event per graph node</li><li>• Result page renders budget, maps, days, weather</li><li>• Plan cached in sessionStorage; editable + exportable</li></ul>
+        <ul><li>• Vue form posts TripRequest to FastAPI</li><li>• /plan/stream emits one SSE event per graph node</li><li>• Result page renders budget, maps, days, weather</li><li>• Plan cached in sessionStorage; editable + exportable</li><li>• Album studio: photos → /api/comic/upload → album service; albums kept in localStorage</li></ul>
       </div>
       <div class="card">
         <div class="card-header"><div class="card-dot emerald"></div><h3>Grounding & guarantees</h3></div>
@@ -372,7 +381,7 @@
       </div>
       <div class="card">
         <div class="card-header"><div class="card-dot amber"></div><h3>Optional modules</h3></div>
-        <ul><li>• RAG: Qdrant hybrid search → soft inspiration notes</li><li>• Critic: deterministic + gated LLM reflection loop</li><li>• Personalized planner: fine-tuned model for final step</li><li>• LangSmith tracing + experiment runner (eval/)</li></ul>
+        <ul><li>• RAG: Qdrant hybrid search → soft inspiration notes</li><li>• Critic: deterministic + gated LLM reflection loop</li><li>• Personalized planner: fine-tuned model for final step</li><li>• LangSmith tracing + experiment runner (eval/)</li><li>• Travel albums: comic-trip service via COMIC_SERVICE_URL</li></ul>
       </div>
     </div>
 
