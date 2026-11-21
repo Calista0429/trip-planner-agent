@@ -4,7 +4,7 @@
 
 [English](README.md) | **日本語**
 
-短いリクエストから、予算・地図・ホテル・食事・天気を含む日ごとの旅程を生成する AI 旅行プランナーです。すべての情報は実際の地図データに基づいています。
+短いリクエストから、予算・地図・ホテル・食事・天気を含む日ごとの旅程を生成する AI 旅行プランナーです。すべての情報は実際の地図データに基づいています。旅行の後は、写真からイラスト入りの旅行アルバムを作れます。
 
 </div>
 
@@ -40,12 +40,12 @@
 
 | レイヤー | 技術 | 役割 |
 | --- | --- | --- |
-| フロントエンド | Vue 3, TypeScript, Vite, Ant Design Vue, Amap JS API | リクエストフォーム（`Home.vue`）、地図付きプラン表示（`Result.vue`）、中/英 i18n |
-| API | FastAPI | `POST /api/trip/plan`、`POST /api/trip/plan/stream`（SSE）、地図/POI/RAG 補助ルート |
+| フロントエンド | Vue 3, TypeScript, Vite, Ant Design Vue, Amap JS API | サイドメニュー、リクエストフォーム（`Home.vue`）、地図付きプラン表示（`Result.vue`）、アルバム作成と一覧（`AlbumWorkspace.vue`、`AlbumLibrary.vue`）、中/英 i18n |
+| API | FastAPI | `POST /api/trip/plan`、`POST /api/trip/plan/stream`（SSE）、`POST /api/comic/upload`（アルバム用プロキシ）、地図/POI/RAG 補助ルート |
 | プランナー | LangGraph ステートマシン（`backend/app/graph/`） | collect → merge → generate → rerank の制御（リトライ・フォールバック付き） |
 | プランナーコア | `backend/app/planner/` | `PlannerContext`、価格算出、リランキング、出力検証、フォールバックプラン |
 | 外部サービス | Amap Web Service、OpenAI 互換 LLM（例：`deepseek-chat`） | 旅行の事実データ、プラン生成 |
-| オプション | Qdrant RAG、Critic ループ、LangSmith | 旅行記からのヒント、自己レビュー、トレースと評価 |
+| オプション | Qdrant RAG、Critic ループ、LangSmith、comic-trip アルバムサービス | 旅行記からのヒント、自己レビュー、トレースと評価、イラストアルバム |
 
 ### リクエストのライフサイクル
 
@@ -60,68 +60,92 @@
 
 ## ユースケース：カップルが 4 日間の杭州旅行を計画する
 
-> **シナリオ。** Lena と Tom は 11 月中旬に 4 日間杭州を訪れます。希望は、ゆったりしたペース、西湖での日の出散歩、本場の杭州料理のディナーです。海鮮は食べられず、予算は 2 人で ¥5,000 です。
+> **シナリオ。** Lena と Tom は 11 月下旬に 4 日間杭州を訪れます。希望は、ゆったりしたペース、西湖での日の出散歩、本場の杭州料理のディナーです。海鮮は食べられず、予算は 2 人で ¥5,000 です。旅行の後は、撮った写真をイラスト入りのアルバムにしたいと考えています。
 >
-> 以下のスクリーンショットはすべて、本プロジェクトを実際に動かして取得したものです。モックは使っていません。
+> 以下のスクリーンショットはすべて、2026-11-21 に本プロジェクトを実際に動かして取得したものです。モックは使っていません。
 
 ### 1. アプリを開き、英語に切り替える
 
-Lena は `http://localhost:5173` を開き、右上の **中文 / EN** スイッチで UI を英語にします。
+Lena は `http://localhost:5173` を開き、右上の **中文 / EN** スイッチで UI を英語にします。サイドメニューは 2 つのグループに分かれています。**Create** には **Trip planner**（旅行プランナー）と **Album studio**（アルバム作成）があり、**My journeys** には **My itinerary**（直近のプラン）と **My albums**（アルバム一覧）があります。
 
-<p align="center"><img src="docs/images/readme/01-home.png" alt="ホーム画面" width="820"></p>
+<p align="center"><img src="docs/images/readme/01-home.png" alt="サイドメニュー付きのホーム画面" width="820"></p>
 
 ### 2. 旅行内容を入力する
 
-リクエストフォームに次のように入力します：
+目的地は省と都市のリストから選びます。続いて **Party, transport, stay & preferences** を開き、残りを入力します：
 
 | 項目 | 値 |
 | --- | --- |
-| 目的地 | `杭州`（Hangzhou）。Amap は中国語の都市名を最も確実に認識します（[トラブルシューティング](#トラブルシューティング)参照） |
-| 日程 | 2026-11-11 → 2026-11-14（4 日間） |
-| 人数 | 大人 2 名、同行者タイプ **Couple** |
-| 予算 | 合計 ¥5,000、レベル **Standard** |
-| 交通 / 宿泊 | 公共交通機関、エコノミーホテル |
+| 省 / 都市 | Zhejiang · 浙江省 / Hangzhou · 杭州市 |
+| 出発 / 帰着 | 2026-11-22 → 2026-11-25（4 日間） |
+| 大人 / 同行者タイプ | 大人 2 名、**Couple** |
+| 予算 | ¥5,000、ソフト予算（厳守のチェックは外したまま）、レベル **Standard** |
+| 現地交通 / 宿泊 | 公共交通機関、エコノミーホテル |
 | 好み | History & culture、Food & dining、Photography spots、City walks |
-| メモ | *"Our first trip to Hangzhou. We want a relaxed pace, a sunrise walk by West Lake, and at least one authentic Hangzhou dinner. No seafood, please. Please write the whole itinerary in English."* |
+| その他の要望 | *"Our first trip to Hangzhou. We want a relaxed pace, a sunrise walk by West Lake, and at least one authentic Hangzhou dinner. No seafood, please. Please write the whole itinerary in English."* |
 
 <p align="center"><img src="docs/images/readme/02-form-filled.png" alt="入力済みのフォーム" width="820"></p>
 
 ### 3. プランナーの進捗を見る
 
-**Start planning** をクリックすると、プログレスバーが SSE 経由で LangGraph のノードをリアルタイムに追います。データ収集、プランナー入力の構築、生成、ランキングの順に進みます。
+**Plan my trip** をクリックすると、旅行準備票が SSE 経由で LangGraph のノードをリアルタイムに追います。スタンプは 4 つです：**Find info**（Amap コレクターの並列実行とコンテキスト統合）、**Shape route**（プランナー用クエリの構築）、**Arrange days**（候補プランの生成）、**Check plan**（候補のランキング）。今回は 70 秒でプランが完成しました。
 
-<p align="center"><img src="docs/images/readme/03-progress.png" alt="計画生成中" width="820"></p>
+<p align="center"><img src="docs/images/readme/03-progress.png" alt="計画生成中" width="560"></p>
 
-### 4. 概要・予算・全体地図を確認する
+### 4. 概要と天気を確認する
 
-約 1 分後、結果ページが開きます。概要には、初日の朝の西湖での日の出散歩、本場の地元料理のディナー、海鮮なしと、すべての要望が反映されています。11 月なので上着を持参するようにという助言もあります。予算の内訳は観光地 ¥140、ホテル ¥750、食事 ¥1,644、交通 ¥400 の合計 **¥2,934** で、上限の ¥5,000 を大きく下回ります。全体地図では、宿泊地・観光地・食事場所が 4 日間それぞれ色分けされています。
+結果ページは **4 days in Hangzhou** から始まります。全体の提案には、初日の朝の白堤での日の出散歩、本場の杭州料理のディナー、海鮮なしと、すべての要望が反映されています。天気欄は Amap の実際の予報で、11/22 は晴れ 17/7 °C、11/23 は小雨 17/8 °C です。Amap の予報は数日先までなので、11/24〜25 は「No forecast」と表示されます。日程が近づいてから再生成すれば反映されます。
 
-<p align="center"><img src="docs/images/readme/04-result-top.png" alt="概要・予算・全体地図" width="820"></p>
+<p align="center"><img src="docs/images/readme/04-result-top.png" alt="概要と天気" width="820"></p>
 
-### 5. 日ごとのルートを確認する
+### 5. 1 日ずつ旅程を確認する
 
-1 日ごとに専用の地図があるので、ルートが街中を行ったり来たりしていないかを確認できます。4 日間にはそれぞれテーマがあります：
+日付スイッチで日を切り替えます。各日には訪問順に立ち寄り先が並び、滞在時間の目安・チケット代・住所が表示されます。隣の **Trip map** には同じ立ち寄り先が番号付きで表示され、ホテル（H）と食事（B・L・D）にも印が付きます。4 日間にはそれぞれテーマがあります：
 
-| 日 | テーマ | 主な見どころ |
+| 日 | テーマ | 立ち寄り先 |
 | --- | --- | --- |
-| 1 日目・11/11 | 到着、湖畔をゆっくり散歩 | 西湖の湖畔、湖滨步行街 |
-| 2 日目・11/12 | 文化と歴史 | 霊隠寺（灵隐寺）、南宋徳寿宮遺跡博物館（德寿宫）、清河坊 |
-| 3 日目・11/13 | 西湖の静かなスポット | 雷峰塔、曲院風荷（曲院风荷）、柳浪聞鶯（柳浪闻莺） |
-| 4 日目・11/14 | 大運河と出発 | 拱宸橋歴史文化街区（拱宸桥）、杭州博物館 |
+| 1 日目・11/22 | 到着、湖畔でゆったり | 白堤、雷峰塔、清河坊 |
+| 2 日目・11/23 | 霊隠寺とお茶の文化 | 霊隠寺（灵隐寺）、雲棲竹径（云栖竹径） |
+| 3 日目・11/24 | 西湖南岸と博物館 | 南宋徳寿宮遺跡博物館（南宋德寿宫遗址博物馆）、太子湾公園（太子湾公园）、湖滨步行街 |
+| 4 日目・11/25 | 大運河と出発 | 拱宸橋西歴史文化街区（拱宸桥西历史文化街区）、大兜路歴史文化街区（大兜路历史文化街区） |
 
-<p align="center"><img src="docs/images/readme/08-daily-maps.png" alt="日ごとのルート地図" width="820"></p>
+地図の下の **Budget** パネルは **¥3,046** で、上限 ¥5,000 の 61% です。内訳は宿泊 ¥1,200、食事 ¥1,146、交通 ¥400、チケット ¥300 です。この数字は構造化されたプランから計算されます。概要文にあるモデルの見積もり（約 3,800 CNY）は大まかなので、パネルはそれを使いません。
 
-### 6. 日ごとの旅程を読む
+観光地の写真は、Amap に写真があればそれを使います。なければキーワード検索の画像を **Stock reference** と表示して使います。実際の場所とは限らないためです。たとえば 3 日目の博物館の画像は、別の宮殿です。
 
-各日には、観光地（住所・滞在時間の目安・チケット代）、おすすめホテル、朝食・昼食・夕食が並びます。場所はすべて Amap 上に実在する POI です。たとえば 1 日目は、西湖沿いの散歩と、地元の老舗「杭州酒家」での昼食を組み合わせています。名称と住所は地図アプリで検索できるよう、中国語のまま表示されます。
+<p align="center"><img src="docs/images/readme/05-day.png" alt="3 日目の立ち寄り先・地図・予算" width="820"></p>
 
-<p align="center"><img src="docs/images/readme/09-itinerary.png" alt="日ごとの旅程" width="640"></p>
+### 6. 旅程全体を 1 枚の地図で見る
 
-### 7. 天気を確認し、編集・エクスポートする
+地図を **Whole trip** に切り替えると、4 日分がまとめて表示されます。ホテル 1 件、観光地 10 件、食事 12 件で、それぞれ日と順番のラベルが付きます（たとえば `2·1` は 2 日目の最初の立ち寄り先）。種類ボタンで絞り込めます。
 
-Amap の予報は約 4 日先までなので、1〜3 日目には実際の天気予報が表示されます。1 日目は晴れ、2 日目は小雨、3 日目は曇りです。4 日目はちょうど予報期間外のため「予報なし」と表示されます。プラン自体は 4 日目も含めて作成されており、日程が近づいてから再生成すれば予報も反映されます。あとは **Edit itinerary** で自由に調整したり、**Export** で Tom に共有したりできます。
+<p align="center"><img src="docs/images/readme/06-whole-trip.png" alt="旅程全体の地図と予算" width="520"></p>
 
-<p align="center"><img src="docs/images/readme/10-weather.png" alt="天気予報" width="820"></p>
+### 7. 宿泊先と食事を確認する
+
+場所はすべて Amap 上に実在する POI です。名称と住所は地図アプリで検索できるよう、中国語のまま表示されます。3 泊とも西湖近くのエコノミーホテル「花田赞酒店」で、1 泊約 ¥200 です。1 日目は朝食が「方老大」、昼食が老舗の「杭州酒家」、夕食が「绿茶餐厅」で、それぞれ 1 人あたりの目安額が付きます。**View on map** を押すと、その場所の詳細が地図に表示されます。
+
+<p align="center"><img src="docs/images/readme/07-stay-eat.png" alt="1 日目のホテルと食事" width="560"></p>
+
+ページ上部の **Edit itinerary** で立ち寄り先を変更し、**Edit trip details** でフォームに戻り、**Export full trip** でプランを Tom に共有できます。同じタブであれば、サイドメニューの **My itinerary** からいつでもこのプランに戻れます。
+
+### 8. 旅行の後：写真をアルバムにする
+
+帰宅後、Lena は **Album studio** を開きます。写真を最大 10 枚追加し、スタイル（**Comic**、**Watercolor journal**、**Retro film**、**Anime**）を選んで **Create album** をクリックします。バックエンドはファイルを検証してから、別サービスの comic-trip アルバムサービスに転送します。そこでエージェントが各写真の場所を特定し、Gemini でイラストを描き、近くのおすすめスポットを提案します。
+
+今回は、杭州の湖畔のあずまやと上海のスカイラインの 2 枚をアップロードし、**Watercolor journal** を選びました。
+
+<p align="center"><img src="docs/images/readme/08-album-studio.png" alt="写真 2 枚とスタイルを選んだアルバム作成画面" width="820"></p>
+
+約 2 分後にアルバムが完成しました。サービスが付けたタイトルは *Shanghai: Past and Future* です。各ページには場所、説明、近くのスポット一覧が付きます。西湖のページなら湖心亭や白堤などです。
+
+<p align="center"><img src="docs/images/readme/09-album.png" alt="生成された水彩アルバム" width="820"></p>
+
+アルバムはこのブラウザの **My albums** にのみ保存されます（`localStorage`、最大 30 件）。別の端末には引き継がれません。
+
+<p align="center"><img src="docs/images/readme/10-album-library.png" alt="My albums" width="820"></p>
+
+> 元の写真 2 枚は、アプリに同梱している Unsplash の写真です（Unsplash License）：[西湖](https://unsplash.com/photos/a-group-of-people-sitting-on-a-bench-next-to-a-body-of-water-WGpESYTfQHE)、[外灘](https://unsplash.com/photos/orient-pearl-shanghai-china-taken-during-daytime-uKyzXEc2k_s)。
 
 ## 起動方法
 
@@ -130,7 +154,7 @@ Amap の予報は約 4 日先までなので、1〜3 日目には実際の天気
 - Python **3.11 以上**、Node.js **22**
 - **Amap（高徳地図）** の Web Service キー（バックエンド用）と Web JS API キー（フロントエンドの地図用）：<https://lbs.amap.com/>
 - **OpenAI 互換**の LLM エンドポイント。*推論（reasoning）モデルではない*チャットモデルを使ってください（例：`deepseek-chat`）
-- 任意：Unsplash キー（観光地の写真）、Docker（RAG 用のローカル Qdrant）、LangSmith キー（トレース）
+- 任意：Unsplash キー（観光地の写真）、Docker（RAG 用のローカル Qdrant）、LangSmith キー（トレース）、comic-trip アルバムサービス（旅行アルバム）
 
 ### 1. バックエンド
 
@@ -195,6 +219,7 @@ npm run dev -- --host 0.0.0.0 --port 5173
 | RAG 旅行ノート | `PLANNER_ENABLE_RAG=1` + `QDRANT_URL`、`MODELSCOPE_API_KEY` | `docker compose up -d` でローカル Qdrant が起動します。データは `backend/scripts/rag_import.py` で取り込みます。ノートは参考情報としてのみ使います |
 | Critic 振り返りループ | `PLANNER_ENABLE_CRITIC=1`、`PLANNER_MAX_REVISE=2` | 決定論的チェックの後に、条件付きで LLM レビューを行います |
 | LangSmith トレース / 評価 | `LANGSMITH_TRACING=true` + `LANGSMITH_API_KEY` | 実験ランナーは [`eval/`](eval/) を参照 |
+| 旅行アルバム | `COMIC_SERVICE_URL=http://localhost:8080`、`COMIC_SERVICE_TIMEOUT_SECONDS=330` | 別サービスの comic-trip-agent（Quarkus、Java 21）を、`GEMINI_API_KEY` と書き込み可能な GCS バケット（`COMIC_TRIP_PICTURE_BUCKET`）付きで起動しておく必要があります。バックエンドは先にアップロードを検証します：最大 10 枚、1 枚 15 MB、合計 95 MB |
 
 ### 4. テスト
 
@@ -211,9 +236,12 @@ cd ../frontend && npm run build   # 型チェック + 本番ビルド
 | --- | --- | --- |
 | 毎回汎用のフォールバックプランが返り、ログに `EmptyLLMResponseError` が出る | `LLM_MODEL_ID` が推論モデルです。`max_tokens` を `reasoning_content` で使い切り、`content` が空になります | `deepseek-chat` などの非推論チャットモデルを使う |
 | RAG 有効化後に Planner LLM が 401 を返す | `HelloAgentsLLM` が `MODELSCOPE_API_KEY` を検出し、プロバイダーを自動で切り替えます | `LLM_PROVIDER=openai` で固定する |
-| 別の都市のホテルやレストランが出る | `Hangzhou` のようなローマ字の都市名は Amap で曖昧にマッチします | `杭州` のように中国語で入力する |
+| 別の都市のホテルやレストランが出る（API 直接呼び出し時） | `Hangzhou` のようなローマ字の都市名は Amap で曖昧にマッチします。Web フォームは都市をリストから選ぶので、この問題は起きません | `杭州市` のように中国語で送る |
 | 天気が「正確な予報なし」と表示される | Amap の予報は今後約 4 日分のみです | 先の日程では想定どおりの動作で、プラン自体は生成されます |
 | 旅程の文章が中国語になる | Planner LLM はデフォルトでコンテキストの言語に従います | メモに "Please write the itinerary in English" と書き添える |
+| アルバム作成画面でサービス未設定と表示される | `backend/.env` の `COMIC_SERVICE_URL` が空です | comic-trip サービス（例：`http://localhost:8080`）を設定し、バックエンドを再起動する |
+| アップロード直後にアルバム生成が失敗する | comic-trip サービスが Gemini または GCS にアクセスできません。Quarkus は自身の設定に `.env` を読みますが、Gemini SDK は `GEMINI_API_KEY` をプロセスの環境変数からしか読みません | 起動前に変数を export し（`set -a && . ./.env && set +a`）、`COMIC_TRIP_PICTURE_BUCKET` を書き込み権限のあるバケットにする |
+| 観光地の写真が別の場所を写している | Amap に写真がなく、キーワード検索の画像を使っています | 想定どおりの動作です。こうした画像には **Stock reference** と表示されます |
 
 ## ディレクトリ構成
 
